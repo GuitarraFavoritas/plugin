@@ -1,0 +1,167 @@
+/* assets/css/admin-styles.css */
+#msh-disponibilidad-container {
+    margin-top: 15px;
+  }
+  .msh-bloque-row {
+    display: flex; /* Activa Flexbox */
+    flex-wrap: wrap; /* Permite que los elementos pasen a la siguiente línea si no caben */
+    align-items: flex-start; /* Alinea elementos arriba si tienen diferentes alturas */
+    gap: 15px; /* Espacio entre elementos flexibles */
+    padding: 15px;
+    margin-bottom: 10px;
+    border: 1px solid #ccd0d4;
+    background: #f8f9fa;
+    position: relative;
+    border-radius: 4px;
+  }
+  /* Estilos para el handle de arrastre (opcional) */
+  .msh-drag-handle {
+    cursor: move;
+    color: #888;
+    margin-right: 5px; /* Pequeño espacio a la derecha del handle */
+    align-self: center; /* Centrar verticalmente el handle */
+  }
+  .msh-bloque-row label {
+    display: block;
+    margin-bottom: 4px;
+    font-weight: bold;
+    font-size: 12px;
+  }
+  .msh-bloque-field-group {
+    margin-bottom: 5px; /* Espacio inferior reducido en modo flex */
+  }
+  /* Anchos específicos para mejor alineación en una línea */
+  .msh-field-dia select { min-width: 130px; }
+  .msh-field-hora-inicio input[type="time"],
+  .msh-field-hora-fin input[type="time"] { width: 100px; }
+  /* Los selectores múltiples pueden ocupar más espacio */
+  .msh-field-sedes select[multiple],
+  .msh-field-programas select[multiple],
+  .msh-field-rangos select[multiple] {
+    min-width: 150px;
+    max-width: 250px; /* Evita que sean demasiado anchos */
+    height: 80px; /* Altura reducida para layout en línea */
+    flex-grow: 1; /* Permite que crezcan si hay espacio */
+  }
+  .msh-remove-bloque {
+    color: #dc3545; /* Rojo bootstrap */
+    text-decoration: none;
+    margin-left: auto; /* Empuja el botón de eliminar al final de la fila */
+    align-self: center; /* Centra verticalmente el botón */
+    padding: 5px;
+    line-height: 1;
+  }
+  .msh-remove-bloque .dashicons {
+      font-size: 18px;
+      vertical-align: middle;
+  }
+  .msh-remove-bloque:hover {
+    color: #a00;
+  }
+  #msh-add-bloque {
+      margin-top: 10px;
+  }
+  #msh-add-bloque .dashicons {
+      vertical-align: text-bottom;
+      margin-right: 3px;
+  }
+  #msh-no-bloques {
+    color: #6c757d; /* Gris bootstrap */
+    font-style: italic;
+    padding: 10px 15px;
+    border: 1px dashed #ccd0d4;
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  /* Estilos para cuando se está arrastrando (si usas sortable) */
+  .msh-sortable .ui-sortable-placeholder {
+      border: 1px dashed #ccc;
+      background: #f0f0f0;
+      height: 50px; /* Ajusta a la altura aproximada de tus filas */
+      margin-bottom: 10px;
+      visibility: visible !important;
+  }
+  .msh-sortable .ui-sortable-helper {
+      background: #fff;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  }
+  
+  /* assets/css/admin-styles.css */
+/* ... (Estilos anteriores para la disponibilidad repetible) ... */
+
+/* ============================================ */
+/* = Estilos para Meta Box Clases Programadas = */
+/* ============================================ */
+.msh-clases-table-wrapper {
+  max-height: 400px; /* Altura máxima para la tabla antes de scroll */
+  overflow-y: auto;
+  margin-bottom: 15px;
+  border: 1px solid #ccd0d4;
+}
+/* Ajustar botones de acción en la tabla */
+.msh-clases-container .wp-list-table td .button {
+  margin-right: 5px;
+  vertical-align: middle;
+}
+.msh-clases-container .wp-list-table td .button-link-delete {
+  color: #dc3545; /* Rojo */
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+  padding: 0 3px;
+}
+.msh-clases-container .wp-list-table td .button-link-delete:hover {
+  color: #a00;
+}
+/* Estilos para el Modal (ThickBox lo envuelve) */
+#msh-clase-modal-container {
+  background: #fff;
+  padding: 20px;
+  max-height: 90vh; /* Evitar que sea demasiado alto */
+  overflow-y: auto;
+}
+#msh-clase-modal-container h2 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  font-size: 1.5em;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+}
+#msh-clase-form .form-table th {
+  width: 150px; /* Ancho fijo para etiquetas */
+  padding-right: 20px;
+}
+#msh-clase-form .form-table td {
+  padding-bottom: 10px; /* Espacio entre filas */
+}
+#msh-clase-form .form-table select,
+#msh-clase-form .form-table input[type="time"],
+#msh-clase-form .form-table input[type="number"] {
+  min-width: 200px;
+}
+#msh-clase-form .form-table input[type="time"],
+#msh_clase_capacidad {
+  width: 120px; /* Ancho más corto para hora y capacidad */
+  min-width: 80px;
+}
+
+#msh-clase-form .spinner {
+  float: none;
+  vertical-align: middle;
+  margin-left: 10px;
+  visibility: hidden; /* Oculto por defecto */
+}
+#msh-clase-form .spinner.is-active {
+  visibility: visible;
+}
+/* Ocultar opciones deshabilitadas en el select */
+#msh-clase-form select option:disabled {
+ /* display: none; // A veces display:none no funciona bien en todos los navegadores para options */
+ /* Alternativa: hacerlas grises */
+ color: #ccc;
+}
+/* Estilos para los hints de disponibilidad */
+.msh-availability-hint {
+  font-size: 0.9em;
+  margin-top: 4px;
+}
