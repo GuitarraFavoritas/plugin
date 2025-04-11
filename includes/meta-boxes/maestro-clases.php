@@ -374,13 +374,113 @@ function msh_ajax_save_clase_handler() {
      error_log("MSH Save Clase - Validación Solapamiento OK.");
 
 
-    // d) Advertencia Proximidad
-    // ... (lógica advertencia proximidad como antes) ...
+    // d) Validación/Advertencia de Proximidad (Traslado)
+    $proximity_warning = '';
+    // Re-usar la query anterior $otras_clases_query (clases del mismo maestro y día)
+    if ( $otras_clases_query->have_posts() ) {
+        $clases_dia = $otras_clases_query->posts;
+        // Añadir la clase actual (si se está editando) para la comparación completa
+        if ($clase_id > 0) {
+            $current_post = get_post($clase_id);
+            if ($current_post) $clases_dia[] = $current_post;
+        }
+        // Ordenar por hora de inicio para encontrar adyacentes
+        usort($clases_dia, function($a, $b) {
+             $time_a = strtotime(get_post_meta($a->ID, '_msh_clase_hora_inicio', true));
+             $time_b = strtotime(get_post_meta($b->ID, '_msh_clase_hora_inicio', true));
+             return $time_a - $time_b;
+        });
+        $clase_anterior = null;
+        $clase_siguiente = null;
+        $new_class_data_temp = ['ID' => $clase_id, 'start' => $start_time_new, 'end' => $end_time_new, 'sede' => $sede_id]; // Simular la nueva/editada
+        // Encontrar posición de la clase nueva/editada y sus vecinas
+        foreach ($clases_dia as $index => $clase_existente) {
+             $start_existing = strtotime(get_post_meta($clase_existente->ID, '_msh_clase_hora_inicio', true));
+             if ($start_existing > $new_class_data_temp['start']) {
+                 $clase_siguiente = $clase_existente;
+                 if ($index > 0) {
+                     $clase_anterior = $clases_dia[$index - 1];
+                 }
+                 break;
+             }
+             // Si es la última y no hemos encontrado siguiente
+             if ($index === count($clases_dia) - 1) {
+                 $clase_anterior = $clase_existente;
+             }
+        }
+         // Si la nueva clase es la primera
+         if ($clase_siguiente === null && count($clases_dia) > 0 && $new_class_data_temp['start'] < strtotime(get_post_meta($clases_dia[0]->ID, '_msh_clase_hora_inicio', true))) {
+             $clase_siguiente = $clases_dia[0];
+         }
+
+        // Verificar hueco ANTES de la nueva clase
+        if ($clase_anterior) {
+            $sede_anterior = absint(get_post_meta($clase_anterior->ID, '_msh_clase_sede_id', true));
+            if ($sede_anterior !== $new_class_data_temp['sede']) {
+                $end_time_anterior = strtotime(get_post_meta($clase_anterior->ID, '_msh_clase_hora_fin', true));
+                $gap_before = $new_class_data_temp['start'] - $end_time_anterior; // en segundos
+                $required_travel_time = msh_get_required_travel_time($end_time_anterior); // Obtener tiempo necesario
+                if ($gap_before < ($required_travel_time * 60)) { // Convertir minutos a segundos
+                    $proximity_warning .= sprintf(__(' ¡Atención! Tiempo de traslado ajustado antes de esta clase desde Sede %s (%d min requeridos, %d min disponibles).', 'music-schedule-manager'), get_the_title($sede_anterior), $required_travel_time, floor($gap_before / 60)) . '<br>';
+                }
+            }
+        }
+        // Verificar hueco DESPUÉS de la nueva clase
+         if ($clase_siguiente) {
+            $sede_siguiente = absint(get_post_meta($clase_siguiente->ID, '_msh_clase_sede_id', true));
+            if ($sede_siguiente !== $new_class_data_temp['sede']) {
+                $start_time_siguiente = strtotime(get_post_meta($clase_siguiente->ID, '_msh_clase_hora_inicio', true));
+                $gap_after = $start_time_siguiente - $new_class_data_temp['end']; // en segundos
+                $required_travel_time = msh_get_required_travel_time($new_class_data_temp['end']); // Tiempo basado en la hora de fin de la clase actual
+                if ($gap_after < ($required_travel_time * 60)) {
+                     $proximity_warning .= sprintf(__(' ¡Atención! Tiempo de traslado ajustado después de esta clase hacia Sede %s (%d min requeridos, %d min disponibles).', 'music-schedule-manager'), get_the_title($sede_siguiente), $required_travel_time, floor($gap_after / 60));
+                }
+            }
+        }
+    }
      error_log("MSH Save Clase - Advertencia Proximidad (si existe): " . $proximity_warning);
 
 
     // 4. Preparar Datos y Guardar Post
-    // ... (generar $post_title, $post_data) ...
+    // *** INICIALIZAR $post_data AQUÍ ***
+    $post_data = array(
+        'post_type'   => 'msh_clase',
+        'post_status' => 'publish',
+        // Añadir otros campos si son necesarios, como post_author si no usas meta para maestro_id
+        // 'post_author' => $maestro_id,
+    );
+
+    // Generar título
+    $maestro_name = get_the_title($maestro_id);
+    $programa_name = get_the_title($programa_id);
+    $rango_name = get_the_title($rango_id);
+    $sede_name = get_the_title($sede_id);
+    $dias_semana_map = msh_get_dias_semana(); // Usar helper
+    $dia_name = $dias_semana_map[$dia] ?? ucfirst($dia);
+    $post_title = sprintf('%s %s-%s | %s (%s) | %s | %s', $dia_name, $hora_inicio, $hora_fin, $programa_name, $rango_name, $sede_name, $maestro_name);
+
+    // *** ASIGNAR Título a $post_data ***
+    $post_data['post_title'] = $post_title;
+
+    // Añadir ID si es una actualización
+    if ( $clase_id > 0 ) {
+
+        // *** VALIDACIÓN EXTRA ANTES DE ACTUALIZAR ***
+        $post_to_update = get_post($clase_id);
+        if (!$post_to_update || $post_to_update->post_type !== 'msh_clase') {
+             error_log("MSH Save Clase - ERROR: Intentando actualizar Post ID $clase_id, pero no existe o no es msh_clase.");
+             wp_send_json_error( array( 'message' => __('Error: La clase que intentas actualizar no existe o es inválida.', 'music-schedule-manager') ) );
+        }
+         // Verificar si pertenece al maestro (redundante si ya se hizo en load_form, pero seguro)
+         $clase_maestro_id_meta = get_post_meta( $clase_id, '_msh_clase_maestro_id', true );
+         if ( absint( $clase_maestro_id_meta ) !== $maestro_id ) {
+              error_log("MSH Save Clase - ERROR: Intentando actualizar Post ID $clase_id, pero no pertenece al Maestro ID $maestro_id.");
+              wp_send_json_error( array( 'message' => __('Error: No tienes permiso para actualizar esta clase.', 'music-schedule-manager') ) );
+         }
+        // *** FIN VALIDACIÓN EXTRA ***
+
+        $post_data['ID'] = $clase_id;
+    }
     error_log("MSH Save Clase - Preparando para guardar Post: " . print_r($post_data, true));
     $result = $clase_id > 0 ? wp_update_post( $post_data, true ) : wp_insert_post( $post_data, true );
 

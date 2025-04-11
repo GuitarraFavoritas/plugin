@@ -42,7 +42,8 @@ function msh_enqueue_admin_assets( $hook_suffix ) {
             'post_id' => $current_post_id,
             // Nonces
             'manage_clases_nonce' => wp_create_nonce( 'msh_manage_clases_action' ),
-            'save_clase_nonce_field' => wp_nonce_field( 'msh_save_clase_action', 'msh_save_clase_nonce', false, false ), // Campo nonce para form clase
+            // *** AÑADIR CAMPO NONCE DE GUARDADO PARA ADMIN JS ***
+            'save_clase_nonce_field' => wp_nonce_field( 'msh_save_clase_action', 'msh_save_clase_nonce', true, false ), // Campo nonce para form clase
             'manage_availability_nonce' => wp_create_nonce( 'msh_manage_disponibilidad_action' ),
             'save_availability_nonce' => wp_create_nonce( 'msh_save_disponibilidad_action' ),
             // Datos Disponibilidad
