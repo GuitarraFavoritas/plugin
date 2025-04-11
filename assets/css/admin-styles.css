@@ -165,3 +165,43 @@
   font-size: 0.9em;
   margin-top: 4px;
 }
+
+
+/* assets/css/admin-styles.css */
+
+/* ... (Estilos anteriores) ... */
+
+/* ======================================================= */
+/* = Estilos para Checkbox Lists en Modal Disponibilidad = */
+/* ======================================================= */
+
+.msh-checkbox-list-container {
+  max-height: 150px; /* Ajusta la altura máxima según necesites */
+  overflow-y: auto;
+  border: 1px solid #ccd0d4;
+  padding: 10px;
+  background-color: #fff;
+  border-radius: 4px;
+  margin-bottom: 5px; /* Espacio antes de la descripción */
+}
+
+.msh-checkbox-item {
+  display: block; /* Un item por línea */
+  margin-bottom: 5px;
+}
+
+.msh-checkbox-item input[type="checkbox"] {
+  margin-right: 8px;
+  vertical-align: middle; /* Alinear checkbox con el texto */
+}
+
+.msh-checkbox-item label {
+  display: inline; /* Para que esté al lado del checkbox */
+  font-weight: normal; /* Quitar negrita si no se desea */
+  vertical-align: middle;
+}
+
+/* Ajustar alineación vertical en la tabla del modal */
+#msh-availability-form .form-table th[style*="vertical-align: top;"] {
+  padding-top: 12px; /* Ajustar padding superior del label */
+}

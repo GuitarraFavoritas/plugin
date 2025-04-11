@@ -238,6 +238,22 @@ jQuery(document).ready(function($) {
              blockData.programas = form.find('#msh_avail_programas').val() || [];
              blockData.rangos = form.find('#msh_avail_rangos').val() || [];
 
+             // *** NUEVO: Recoger valores de checkboxes marcados ***
+             blockData.sedes = form.find('input[name="msh_avail_sedes[]"]:checked').map(function() {
+                return $(this).val(); // Devuelve el ID (value)
+            }).get(); // Convierte a array estándar
+
+            blockData.programas = form.find('input[name="msh_avail_programas[]"]:checked').map(function() {
+                return $(this).val();
+            }).get();
+
+            blockData.rangos = form.find('input[name="msh_avail_rangos[]"]:checked').map(function() {
+                return $(this).val();
+            }).get();
+            // *** FIN NUEVO ***
+
+
+            // --- Validación Client-Side (Básica) ---
              var errors = [];
              if (!blockData.dia) errors.push('El campo Día es obligatorio.');
              if (!blockData.hora_inicio) errors.push('El campo Hora Inicio es obligatorio.');

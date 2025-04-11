@@ -101,14 +101,19 @@ function msh_render_disponibilidad_form_fields( $block_data = [], $index = '{{IN
      // Reutilizar listas obtenidas en la función render o pasarlas como argumento
     // (Asumimos que tenemos acceso a $sedes, $programas, $rangos, $dias_semana)
     global $sedes, $programas, $rangos, $dias_semana; // Acceso simple, podría mejorarse
+    if (!isset($sedes)) $sedes = get_posts( array( 'post_type' => 'msh_sede', 'numberposts' => -1, 'post_status' => 'publish', 'orderby' => 'title', 'order' => 'ASC' ) );
+    if (!isset($programas)) $programas = get_posts( array( 'post_type' => 'msh_programa', 'numberposts' => -1, 'post_status' => 'publish', 'orderby' => 'title', 'order' => 'ASC' ) );
+    if (!isset($rangos)) $rangos = get_posts( array( 'post_type' => 'msh_rango_edad', 'numberposts' => -1, 'post_status' => 'publish', 'orderby' => 'title', 'order' => 'ASC' ) );
+    if (!isset($dias_semana)) $dias_semana = msh_get_dias_semana();
 
     // Valores por defecto o guardados
     $dia_seleccionado = $block_data['dia'] ?? '';
     $hora_inicio = $block_data['hora_inicio'] ?? '';
     $hora_fin = $block_data['hora_fin'] ?? '';
-    $sedes_seleccionadas = $block_data['sedes'] ?? [];
-    $programas_seleccionados = $block_data['programas'] ?? [];
-    $rangos_seleccionados = $block_data['rangos'] ?? [];
+    // Asegurarse que sean arrays para in_array()
+    $sedes_seleccionadas = isset($block_data['sedes']) && is_array($block_data['sedes']) ? $block_data['sedes'] : [];
+    $programas_seleccionados = isset($block_data['programas']) && is_array($block_data['programas']) ? $block_data['programas'] : [];
+    $rangos_seleccionados = isset($block_data['rangos']) && is_array($block_data['rangos']) ? $block_data['rangos'] : [];
 
     ob_start();
     ?>
@@ -121,7 +126,7 @@ function msh_render_disponibilidad_form_fields( $block_data = [], $index = '{{IN
                     <th><label for="msh_avail_dia"><?php esc_html_e( 'Día', 'music-schedule-manager' ); ?> <span class="description">(required)</span></label></th>
                     <td>
                         <select name="msh_avail_dia" id="msh_avail_dia" required>
-                            <option value=""><?php esc_html_e('-- Seleccionar --', 'music-schedule-manager'); ?></option>
+                           <option value=""><?php esc_html_e('-- Seleccionar --', 'music-schedule-manager'); ?></option>
                             <?php if (!empty($dias_semana)): ?>
                                 <?php foreach ($dias_semana as $key => $label): ?>
                                     <option value="<?php echo esc_attr($key); ?>" <?php selected($dia_seleccionado, $key); ?>><?php echo esc_html($label); ?></option>
@@ -138,57 +143,87 @@ function msh_render_disponibilidad_form_fields( $block_data = [], $index = '{{IN
                     <th><label for="msh_avail_hora_fin"><?php esc_html_e( 'Hora Fin', 'music-schedule-manager' ); ?> <span class="description">(required)</span></label></th>
                     <td><input type="time" name="msh_avail_hora_fin" id="msh_avail_hora_fin" value="<?php echo esc_attr($hora_fin); ?>" required></td>
                 </tr>
-                 <tr class="form-field">
-                    <th><label for="msh_avail_sedes"><?php esc_html_e( 'Sedes Admisibles', 'music-schedule-manager' ); ?></label></th>
+
+                <?php // --- Checkboxes para Sedes --- ?>
+                <tr class="form-field">
+                    <th style="vertical-align: top;"><label><?php esc_html_e( 'Sedes Admisibles', 'music-schedule-manager' ); ?></label></th>
                     <td>
-                        <select multiple name="msh_avail_sedes[]" id="msh_avail_sedes" style="height: 100px; width: 90%;">
+                        <div class="msh-checkbox-list-container">
                              <?php if (!empty($sedes)) : ?>
                                 <?php foreach ($sedes as $sede): ?>
-                                    <option value="<?php echo esc_attr($sede->ID); ?>" <?php selected(in_array($sede->ID, $sedes_seleccionadas)); ?>>
-                                        <?php echo esc_html($sede->post_title); ?>
-                                    </option>
+                                    <div class="msh-checkbox-item">
+                                        <input type="checkbox"
+                                               name="msh_avail_sedes[]" <?php // Nombre como array ?>
+                                               id="msh_avail_sede_<?php echo esc_attr($sede->ID); ?>"
+                                               value="<?php echo esc_attr($sede->ID); ?>"
+                                               <?php checked(in_array($sede->ID, $sedes_seleccionadas)); ?>>
+                                        <label for="msh_avail_sede_<?php echo esc_attr($sede->ID); ?>">
+                                            <?php echo esc_html($sede->post_title); ?>
+                                        </label>
+                                    </div>
                                 <?php endforeach; ?>
                              <?php else: ?>
-                                <option value="" disabled><?php esc_html_e('No hay sedes creadas', 'music-schedule-manager'); ?></option>
+                                <p><em><?php esc_html_e('No hay sedes creadas.', 'music-schedule-manager'); ?></em></p>
                              <?php endif; ?>
-                        </select>
-                         <p class="description"><?php esc_html_e('Mantén Ctrl/Cmd para seleccionar múltiples.', 'music-schedule-manager'); ?></p>
+                        </div>
+                         <p class="description"><?php esc_html_e('Selecciona todas las sedes aplicables.', 'music-schedule-manager'); ?></p>
                     </td>
                 </tr>
-                <tr class="form-field">
-                    <th><label for="msh_avail_programas"><?php esc_html_e( 'Programas Admisibles', 'music-schedule-manager' ); ?></label></th>
+
+                <?php // --- Checkboxes para Programas --- ?>
+                 <tr class="form-field">
+                    <th style="vertical-align: top;"><label><?php esc_html_e( 'Programas Admisibles', 'music-schedule-manager' ); ?></label></th>
                     <td>
-                         <select multiple name="msh_avail_programas[]" id="msh_avail_programas" style="height: 100px; width: 90%;">
+                        <div class="msh-checkbox-list-container">
                              <?php if (!empty($programas)) : ?>
                                 <?php foreach ($programas as $programa): ?>
-                                    <option value="<?php echo esc_attr($programa->ID); ?>" <?php selected(in_array($programa->ID, $programas_seleccionados)); ?>>
-                                        <?php echo esc_html($programa->post_title); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                              <?php else: ?>
-                                <option value="" disabled><?php esc_html_e('No hay programas creados', 'music-schedule-manager'); ?></option>
-                             <?php endif; ?>
-                        </select>
-                        <p class="description"><?php esc_html_e('Mantén Ctrl/Cmd para seleccionar múltiples.', 'music-schedule-manager'); ?></p>
-                    </td>
-                </tr>
-                 <tr class="form-field">
-                    <th><label for="msh_avail_rangos"><?php esc_html_e( 'Edades Admisibles', 'music-schedule-manager' ); ?></label></th>
-                    <td>
-                         <select multiple name="msh_avail_rangos[]" id="msh_avail_rangos" style="height: 100px; width: 90%;">
-                             <?php if (!empty($rangos)) : ?>
-                                <?php foreach ($rangos as $rango): ?>
-                                    <option value="<?php echo esc_attr($rango->ID); ?>" <?php selected(in_array($rango->ID, $rangos_seleccionados)); ?>>
-                                        <?php echo esc_html($rango->post_title); ?>
-                                    </option>
+                                    <div class="msh-checkbox-item">
+                                        <input type="checkbox"
+                                               name="msh_avail_programas[]" <?php // Nombre como array ?>
+                                               id="msh_avail_programa_<?php echo esc_attr($programa->ID); ?>"
+                                               value="<?php echo esc_attr($programa->ID); ?>"
+                                                <?php // Asegurarse que $programas_seleccionados sea array antes de in_array ?>
+                                               <?php checked(is_array($programas_seleccionados) && in_array($programa->ID, $programas_seleccionados)); ?>>
+                                        <label for="msh_avail_programa_<?php echo esc_attr($programa->ID); ?>">
+                                            <?php echo esc_html($programa->post_title); ?>
+                                        </label>
+                                     </div>
                                 <?php endforeach; ?>
                              <?php else: ?>
-                                <option value="" disabled><?php esc_html_e('No hay rangos creados', 'music-schedule-manager'); ?></option>
+                                 <p><em><?php esc_html_e('No hay programas creados.', 'music-schedule-manager'); ?></em></p>
                              <?php endif; ?>
-                        </select>
-                         <p class="description"><?php esc_html_e('Mantén Ctrl/Cmd para seleccionar múltiples.', 'music-schedule-manager'); ?></p>
+                        </div>
+                         <p class="description"><?php esc_html_e('Selecciona todos los programas aplicables.', 'music-schedule-manager'); ?></p>
                     </td>
                 </tr>
+
+                <?php // --- Checkboxes para Rangos de Edad --- ?>
+                <tr class="form-field">
+                    <th style="vertical-align: top;"><label><?php esc_html_e( 'Edades Admisibles', 'music-schedule-manager' ); ?></label></th>
+                    <td>
+                         <div class="msh-checkbox-list-container">
+                             <?php if (!empty($rangos)) : ?>
+                                <?php foreach ($rangos as $rango): ?>
+                                    <div class="msh-checkbox-item">
+                                        <input type="checkbox"
+                                               name="msh_avail_rangos[]" <?php // Nombre como array ?>
+                                               id="msh_avail_rango_<?php echo esc_attr($rango->ID); ?>"
+                                               value="<?php echo esc_attr($rango->ID); ?>"
+                                                <?php // Asegurarse que $rangos_seleccionados sea array antes de in_array ?>
+                                               <?php checked(is_array($rangos_seleccionados) && in_array($rango->ID, $rangos_seleccionados)); ?>>
+                                        <label for="msh_avail_rango_<?php echo esc_attr($rango->ID); ?>">
+                                            <?php echo esc_html($rango->post_title); ?>
+                                        </label>
+                                    </div>
+                                <?php endforeach; ?>
+                             <?php else: ?>
+                                <p><em><?php esc_html_e('No hay rangos de edad creados.', 'music-schedule-manager'); ?></em></p>
+                             <?php endif; ?>
+                        </div>
+                         <p class="description"><?php esc_html_e('Selecciona todos los rangos aplicables.', 'music-schedule-manager'); ?></p>
+                    </td>
+                </tr>
+
             </tbody>
         </table>
     <?php
