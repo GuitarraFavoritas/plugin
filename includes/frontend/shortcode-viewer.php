@@ -20,7 +20,13 @@ function msh_render_schedule_viewer_shortcode( $atts ) {
     wp_enqueue_style('thickbox');
     wp_enqueue_script('thickbox');
     wp_enqueue_style('msh-frontend-styles', MSH_PLUGIN_URL . 'assets/css/frontend-styles.css', array('thickbox'), MSH_VERSION);
+    
+    // *** Encolar Draggable y asegurar jQuery UI Core/Widget/Mouse ***
+    wp_enqueue_script( 'jquery-ui-draggable', false, array('jquery', 'jquery-ui-core', 'jquery-ui-mouse', 'jquery-ui-widget'), null, true );
+    // *** Fin Encolar Draggable ***
+
     wp_enqueue_script('msh-frontend-script', MSH_PLUGIN_URL . 'assets/js/frontend-script.js', array('jquery', 'thickbox'), MSH_VERSION, true);
+    
 
     // Obtener Mapas ID -> Título usando el helper
     $sede_map = msh_get_cpt_id_title_map('msh_sede');
@@ -36,9 +42,14 @@ function msh_render_schedule_viewer_shortcode( $atts ) {
         'ajax_url' => admin_url( 'admin-ajax.php' ),
         'nonce'    => wp_create_nonce( 'msh_filter_schedule_nonce' ), // Para filtros
         'manage_clases_nonce' => wp_create_nonce( 'msh_manage_clases_action' ), // Para cargar modal clase
-        'save_clase_nonce_field' => wp_nonce_field( 'msh_save_clase_action', 'msh_save_clase_nonce', false, false ), // Campo HTML nonce para form clase
+
+        // *** Pasar el CAMPO HTML del nonce de guardado ***
+        'save_clase_nonce_field' => wp_nonce_field( 'msh_save_clase_action', 'msh_save_clase_nonce', true, false ),
+
         // Mapas de Nombres
         'sede_names' => $sede_map, 'programa_names' => $programa_map, 'rango_names' => $rango_map, 'maestro_names' => $maestro_map,
+
+        
         // Textos traducibles
         'loading_message' => esc_html__( 'Buscando horarios...', 'music-schedule-manager' ),
         'error_message'   => esc_html__( 'Ocurrió un error. Por favor, inténtalo de nuevo.', 'music-schedule-manager' ),

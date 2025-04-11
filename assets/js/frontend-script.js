@@ -97,7 +97,27 @@ jQuery(document).ready(function($) {
          var width = $(window).width() * 0.8; var height = $(window).height() * 0.8; if (width > 800) width = 800; if (height > 650) height = 650;
          var $modalContainer = $('#' + modalId); var $modalContent = $('#' + contentId);
          $modalContainer.hide(); $modalContent.html('<p>' + (msh_frontend_data.modal_loading_form || 'Cargando...') + '</p>');
+
+         // Mostrar ThickBox
          tb_show( title, '#TB_inline?width=' + width + '&height=' + height + '&inlineId=' + modalId, null );
+
+         // *** Hacer el modal de ThickBox arrastrable DESPUÉS de que se muestre ***
+         // Usar un pequeño retraso para asegurar que TB_window existe
+         setTimeout(function() {
+            var $tbWindow = $('#TB_window');
+            if ($tbWindow.length && $.fn.draggable) { // Verificar que draggable está cargado
+                // Hacer arrastrable por la barra de título (#TB_title)
+                $tbWindow.draggable({
+                    handle: "#TB_title",
+                    containment: "window" // Opcional: limitar arrastre a la ventana
+                });
+                // Añadir cursor de movimiento a la barra de título
+                $('#TB_title').css('cursor', 'move');
+            } else {
+                console.warn("MSH Frontend: jQuery UI Draggable no está disponible o #TB_window no encontrado a tiempo.");
+            }
+        }, 100); // Retraso de 100ms (ajustar si es necesario)
+
          resetFrontendClaseModalMessages();
     }
 
@@ -119,7 +139,21 @@ jQuery(document).ready(function($) {
             data: { action: 'msh_load_clase_form', maestro_id: maestroId, clase_id: claseId, security: nonce },
             success: function(response) {
                 if (response.success) {
-                    frontendModalContent.html(response.data.html + (msh_frontend_data.save_clase_nonce_field || ''));
+
+
+                    // *** Añadir nonce al HTML antes de mostrarlo ***
+                    var formHtmlWithNonce = response.data.html;
+                    // Buscar la etiqueta de cierre </form> e insertar el nonce antes
+                    var closingFormTag = '</form>';
+                    if (formHtmlWithNonce.includes(closingFormTag) && msh_frontend_data.save_clase_nonce_field) {
+                         formHtmlWithNonce = formHtmlWithNonce.replace(closingFormTag, msh_frontend_data.save_clase_nonce_field + closingFormTag);
+                    } else {
+                        console.warn("MSH Frontend: No se pudo inyectar el nonce de guardado en el formulario modal.");
+                    }
+                    frontendModalContent.html(formHtmlWithNonce);
+                    // *** Fin añadir nonce ***
+
+
                     attachFrontendClaseModalListeners();
                     if (response.data.maestro_availability) {
                         initializeFrontendDynamicFiltering(response.data.maestro_availability);
@@ -145,7 +179,18 @@ jQuery(document).ready(function($) {
             data: { action: 'msh_load_clase_form', maestro_id: maestroId, clase_id: 0, security: nonce },
              success: function(response) {
                 if (response.success) {
-                    frontendModalContent.html(response.data.html + (msh_frontend_data.save_clase_nonce_field || ''));
+
+                    // *** Añadir nonce al HTML antes de mostrarlo ***
+                    var formHtmlWithNonce = response.data.html;
+                    var closingFormTag = '</form>';
+                     if (formHtmlWithNonce.includes(closingFormTag) && msh_frontend_data.save_clase_nonce_field) {
+                         formHtmlWithNonce = formHtmlWithNonce.replace(closingFormTag, msh_frontend_data.save_clase_nonce_field + closingFormTag);
+                     } else {
+                         console.warn("MSH Frontend: No se pudo inyectar el nonce de guardado en el formulario modal.");
+                     }
+                    frontendModalContent.html(formHtmlWithNonce);
+                     // *** Fin añadir nonce ***
+
                     var form = $('#msh-clase-form');
                     if (form.length && prefillData) { // Pre-rellenar
                         if (prefillData.dia) form.find('#msh_clase_dia').val(prefillData.dia);
@@ -175,8 +220,16 @@ jQuery(document).ready(function($) {
              submitButton.prop('disabled', true); spinner.addClass('is-active');
              var startTime = form.find('#msh_clase_hora_inicio').val(); var endTime = form.find('#msh_clase_hora_fin').val();
              if (startTime && endTime && endTime <= startTime) { validationMsgDiv.html(msh_frontend_data.validation_end_after_start || 'Hora fin debe ser posterior.').show(); submitButton.prop('disabled', false); spinner.removeClass('is-active'); return; }
-             var saveNonce = form.find('#msh_save_clase_nonce').val(); // Nonce DENTRO del formulario
-             if (!saveNonce) { validationMsgDiv.html('Error: Falta Nonce de guardado.').show(); submitButton.prop('disabled', false); spinner.removeClass('is-active'); return; }
+             
+             var saveNonce = form.find('input[name="msh_save_clase_nonce"]').val(); // Buscar por nombre
+             if (!saveNonce) {
+                 saveNonce = form.find('#msh_save_clase_nonce').val(); // Buscar por ID si falla el nombre
+             }
+
+
+             if (!saveNonce) { 
+                validationMsgDiv.html('Error: Falta Nonce de guardado en el formulario.').show(); 
+                submitButton.prop('disabled', false); spinner.removeClass('is-active'); return; }
 
              $.ajax({
                  url: msh_frontend_data.ajax_url, type: 'POST', data: form.serialize() + '&action=msh_save_clase&security=' + saveNonce,
