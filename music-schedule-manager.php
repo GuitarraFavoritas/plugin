@@ -19,6 +19,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 define( 'MSH_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MSH_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'MSH_VERSION', '1.1.0' );
+
+// *** Incluir Helpers PRIMERO ***
+require_once MSH_PLUGIN_DIR . 'includes/helpers.php';
 // Incluir archivos necesarios
 require_once MSH_PLUGIN_DIR . 'includes/cpt-registrations.php';
 require_once MSH_PLUGIN_DIR . 'includes/admin/assets.php';

@@ -1,180 +1,249 @@
 // assets/js/frontend-script.js
 jQuery(document).ready(function($) {
 
-    // Asegurarse que los datos existen
+    // === Verificación Inicial ===
     if (typeof msh_frontend_data === 'undefined' || !msh_frontend_data.ajax_url || !msh_frontend_data.nonce) {
-        console.error('MSH Frontend Error: Faltan datos de configuración (ajax_url, nonce).');
-        $('#msh-schedule-results-feedback').text('Error de configuración. Contacta al administrador.').show();
+        console.error('MSH Frontend Error: Faltan datos de configuración.');
+        $('#msh-schedule-results-feedback').text('Error de configuración.').show();
         return;
     }
 
+    // === Selectores ===
     var filterForm = $('#msh-schedule-filters-form');
     var resultsContainer = $('#msh-schedule-results-table-container');
     var feedbackDiv = $('#msh-schedule-results-feedback');
-    var initialMessage = $('#msh-initial-message'); // Mensaje inicial
+    var initialMessage = $('#msh-initial-message');
+    var frontendModalContainer = $('#msh-frontend-clase-modal-container'); // ID del contenedor en el shortcode
+    var frontendModalContent = $('#msh-frontend-clase-modal-content'); // ID del contenido dentro del contenedor
 
-     // --- Helper: Obtener nombre del día ---
-     function getDayName(dayKey) {
-         return (msh_frontend_data.days_of_week && msh_frontend_data.days_of_week[dayKey]) ? msh_frontend_data.days_of_week[dayKey] : dayKey;
-     }
-     // --- Helper: Obtener nombre del maestro ---
-      function getMaestroName(id) {
-          return (msh_frontend_data.maestro_names && msh_frontend_data.maestro_names[id]) ? msh_frontend_data.maestro_names[id] : `Maestro ID:${id}`;
-      }
-     // --- Helper: Obtener nombres (Sede, Programa, Rango) desde IDs ---
-      function getNamesFromIds(ids, map) {
-          if (!Array.isArray(ids) || !map) return [];
-          return ids.map(id => map[id] || `ID:${id}?`).filter(name => name);
-      }
+    // === Helpers ===
+    function getDayName(dayKey) { return (msh_frontend_data.days_of_week && msh_frontend_data.days_of_week[dayKey]) ? msh_frontend_data.days_of_week[dayKey] : dayKey; }
+    function getNameById(id, mapName) { const map = msh_frontend_data[mapName] || {}; return map[id] || `ID:${id}?`; }
+    function getNamesFromIds(ids, mapName) {
+        if (!Array.isArray(ids)) return []; const map = msh_frontend_data[mapName] || {};
+        return ids.map(id => parseInt(id, 10)).filter(numId => !isNaN(numId) && map.hasOwnProperty(numId)).map(numId => map[numId]);
+    }
 
-
-    // --- Manejar Envío del Formulario de Filtros ---
+    // === Lógica Filtros ===
     filterForm.on('submit', function(e) {
-        e.preventDefault(); // Prevenir recarga de página
-
-        var formData = $(this).serialize(); // Obtener datos del formulario serializados
-        var submitButton = $(this).find('.msh-filter-submit-btn');
-
-        // Añadir acción y nonce a los datos
-        var dataToSend = formData +
-                         '&action=msh_filter_schedule' +
-                         '&nonce=' + msh_frontend_data.nonce;
+        e.preventDefault();
+        var formData = $(this).serialize(); var submitButton = $(this).find('.msh-filter-submit-btn');
+        var dataToSend = formData + '&action=msh_filter_schedule&nonce=' + msh_frontend_data.nonce;
 
         $.ajax({
-            url: msh_frontend_data.ajax_url,
-            type: 'POST',
-            data: dataToSend,
+            url: msh_frontend_data.ajax_url, type: 'POST', data: dataToSend,
             beforeSend: function() {
-                // Mostrar estado de carga
-                submitButton.prop('disabled', true);
-                initialMessage.hide(); // Ocultar mensaje inicial
-                feedbackDiv.text(msh_frontend_data.loading_message || 'Buscando...').removeClass('msh-error').addClass('msh-loading').show();
-                resultsContainer.empty().append('<div class="msh-spinner"></div>'); // Limpiar tabla y mostrar spinner CSS
+                submitButton.prop('disabled', true); initialMessage.hide();
+                feedbackDiv.text(msh_frontend_data.loading_message || 'Buscando...').removeClass('msh-error msh-info').addClass('msh-loading').show();
+                resultsContainer.empty().append('<div class="msh-spinner"></div>');
             },
             success: function(response) {
-                feedbackDiv.hide().removeClass('msh-loading'); // Ocultar mensaje de carga
-
+                feedbackDiv.hide().removeClass('msh-loading');
                 if (response.success) {
-                    // Renderizar la tabla con los resultados
                     renderResultsTable(response.data.schedule_data);
-                    if (response.data.schedule_data.length === 0) {
-                         feedbackDiv.text(msh_frontend_data.no_results_message || 'No se encontraron resultados.').show();
+                    if (!response.data.schedule_data || response.data.schedule_data.length === 0) {
+                         feedbackDiv.text(msh_frontend_data.no_results_message || 'No hay resultados.').addClass('msh-info').show();
                     }
                 } else {
-                    // Mostrar mensaje de error del servidor
-                    var errorMsg = response.data.message || msh_frontend_data.error_message || 'Ocurrió un error.';
-                    feedbackDiv.text(errorMsg).addClass('msh-error').show();
-                    resultsContainer.empty(); // Limpiar contenedor de tabla en caso de error
+                    var errorMsg = response.data.message || msh_frontend_data.error_message || 'Error.';
+                    feedbackDiv.text(errorMsg).addClass('msh-error').show(); resultsContainer.empty();
                 }
             },
             error: function() {
-                // Mostrar mensaje de error de conexión
-                 feedbackDiv.text(msh_frontend_data.error_message || 'Ocurrió un error de conexión.').addClass('msh-error').show();
-                 resultsContainer.empty();
+                 feedbackDiv.text(msh_frontend_data.error_message || 'Error.').addClass('msh-error').show(); resultsContainer.empty();
             },
-            complete: function() {
-                // Reactivar botón de envío
-                submitButton.prop('disabled', false);
-                resultsContainer.find('.msh-spinner').remove(); // Quitar spinner
-            }
+            complete: function() { submitButton.prop('disabled', false); resultsContainer.find('.msh-spinner').remove(); }
         });
     });
 
-    // --- Manejar Reset del Formulario ---
     filterForm.on('reset', function() {
-        // Limpiar resultados y mensajes al resetear
-        resultsContainer.empty();
-        feedbackDiv.hide().text('');
-        initialMessage.show(); // Mostrar mensaje inicial de nuevo
+        resultsContainer.empty(); feedbackDiv.hide().text('').removeClass('msh-error msh-loading msh-info'); initialMessage.show();
     });
 
-
-    // --- Función para Renderizar la Tabla de Resultados ---
+    // === Renderizado Tabla ===
     function renderResultsTable(scheduleData) {
-        resultsContainer.empty(); // Limpiar contenedor
+        resultsContainer.empty();
+        if (!scheduleData || scheduleData.length === 0) { return; }
 
-        if (!scheduleData || scheduleData.length === 0) {
-            // El mensaje de "no resultados" se muestra en feedbackDiv en el success del AJAX
-            return;
-        }
+        var tableHtml = `<table class="msh-results-table"><thead><tr><th>Horario</th><th>Maestro</th><th>Programa</th><th>Sede</th><th>Rango de Edades</th><th>Disponibilidad</th><th>Acciones</th></tr></thead><tbody>`;
+        const maxLen = 30;
 
-        // Crear estructura de la tabla
-        var tableHtml = `
-            <table class="msh-results-table">
-                <thead>
-                    <tr>
-                        <th>${'Horario'}</th>
-                        <th>${'Maestro'}</th>
-                        <th>${'Programa'}</th>
-                        <th>${'Sede'}</th>
-                        <th>${'Rango de Edades'}</th>
-                        <th>${'Disponibilidad'}</th>
-                        <th>${'Acciones'}</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-
-        // Iterar sobre los datos y construir filas
         $.each(scheduleData, function(index, item) {
             let horario = `${getDayName(item.dia)} ${item.hora_inicio}-${item.hora_fin}`;
-            let maestro = getMaestroName(item.maestro_id);
+            let maestro = getNameById(item.maestro_id, 'maestro_names');
             let programaDisplay, sedeDisplay, rangoDisplay, disponibilidad, acciones;
 
             if (item.type === 'asignado') {
-                programaDisplay = msh_frontend_data.programa_names[item.programa_id] || `ID:${item.programa_id}`;
-                sedeDisplay = msh_frontend_data.sede_names[item.sede_id] || `ID:${item.sede_id}`;
-                rangoDisplay = msh_frontend_data.rango_names[item.rango_id] || `ID:${item.rango_id}`;
-                let vacantes = item.capacidad - (item.inscritos || 0);
-                disponibilidad = vacantes > 0 ? `${vacantes} ${vacantes === 1 ? 'vacante' : 'vacantes'}` : 'Completo';
-                 // TO-DO: Definir acciones para 'asignado' (Cambiar Disponibilidad - redirigir a backend?)
-                // Por ahora, un placeholder o link de ejemplo
-                 acciones = `<a href="/wp-admin/post.php?post=${item.clase_id}&action=edit" target="_blank" class="button button-small">Gestionar</a>`; // Ejemplo de link a backend
-                 // acciones = `<button type="button" class="button button-small msh-change-availability-btn" data-clase-id="${item.clase_id}">Cambiar Capacidad</button>`; // Si se implementara modal frontend
-
+                programaDisplay = getNameById(item.programa_id, 'programa_names'); sedeDisplay = getNameById(item.sede_id, 'sede_names'); rangoDisplay = getNameById(item.rango_id, 'rango_names');
+                let vacantes = item.capacidad - (item.inscritos || 0); disponibilidad = vacantes > 0 ? `${vacantes} ${vacantes === 1 ? 'vacante' : 'vacantes'}` : 'Completo';
+                acciones = `<button type="button" class="button button-small msh-manage-assigned-btn" data-clase-id="${item.clase_id}" data-maestro-id="${item.maestro_id}">Gestionar</button>`;
             } else { // 'vacio'
-                 let programas = getNamesFromIds(item.programas_admisibles, msh_frontend_data.programa_names).join(', ');
-                 let sedes = getNamesFromIds(item.sedes_admisibles, msh_frontend_data.sede_names).join(', ');
-                 let rangos = getNamesFromIds(item.rangos_admisibles, msh_frontend_data.rango_names).join(', ');
-
-                 // Acortar para visualización
-                 const maxLen = 30;
-                 programaDisplay = programas.length > maxLen ? `<span title="${programas}">${programas.substring(0,maxLen)}...</span>` : (programas || '<em>N/A</em>');
-                 sedeDisplay = sedes.length > maxLen ? `<span title="${sedes}">${sedes.substring(0,maxLen)}...</span>` : (sedes || '<em>N/A</em>');
-                 rangoDisplay = rangos.length > maxLen ? `<span title="${rangos}">${rangos.substring(0,maxLen)}...</span>` : (rangos || '<em>N/A</em>');
-
-                disponibilidad = 'Vacío';
-                 // TO-DO: Definir acciones para 'vacio' (Asignar Horario - redirigir a backend?)
-                 // Por ahora, un placeholder o link de ejemplo
-                 let addClassUrl = `/wp-admin/post-new.php?post_type=msh_clase&maestro_id=${item.maestro_id}&dia=${item.dia}&hora_inicio=${item.hora_inicio}&hora_fin=${item.hora_fin}`;
-                 acciones = `<a href="${addClassUrl}" target="_blank" class="button button-primary button-small">Asignar</a>`; // Ejemplo link a backend pre-rellenado
-                 // acciones = `<button type="button" class="button button-primary button-small msh-assign-schedule-btn" data-maestro-id="${item.maestro_id}" data-block='${JSON.stringify(item)}'>Asignar Horario</button>`; // Si se implementara modal frontend
+                 let programasAdmisiblesNombres = getNamesFromIds(item.programas_admisibles, 'programa_names'); let sedesAdmisiblesNombres = getNamesFromIds(item.sedes_admisibles, 'sede_names'); let rangosAdmisiblesNombres = getNamesFromIds(item.rangos_admisibles, 'rango_names');
+                 let programasStr = programasAdmisiblesNombres.join(', '); let sedesStr = sedesAdmisiblesNombres.join(', '); let rangosStr = rangosAdmisiblesNombres.join(', ');
+                 programaDisplay = programasStr ? (programasStr.length > maxLen ? `<span title="${programasStr}">${programasStr.substring(0,maxLen)}...</span>` : programasStr) : '<em>N/A</em>';
+                 sedeDisplay = sedesStr ? (sedesStr.length > maxLen ? `<span title="${sedesStr}">${sedesStr.substring(0,maxLen)}...</span>` : sedesStr) : '<em>N/A</em>';
+                 rangoDisplay = rangosStr ? (rangosStr.length > maxLen ? `<span title="${rangosStr}">${rangosStr.substring(0,maxLen)}...</span>` : rangosStr) : '<em>N/A</em>';
+                 disponibilidad = 'Vacío';
+                 acciones = `<button type="button" class="button button-primary button-small msh-assign-empty-btn" data-maestro-id="${item.maestro_id}" data-block-details='${JSON.stringify(item)}'>Asignar</button>`;
             }
-
-            tableHtml += `
-                <tr>
-                    <td>${horario}</td>
-                    <td>${maestro}</td>
-                    <td>${programaDisplay}</td>
-                    <td>${sedeDisplay}</td>
-                    <td>${rangoDisplay}</td>
-                    <td>${disponibilidad}</td>
-                    <td>${acciones}</td>
-                </tr>
-            `;
+            tableHtml += `<tr><td>${horario}</td><td>${maestro}</td><td>${programaDisplay}</td><td>${sedeDisplay}</td><td>${rangoDisplay}</td><td>${disponibilidad}</td><td>${acciones}</td></tr>`;
         });
-
-        tableHtml += `
-                </tbody>
-            </table>
-        `;
-
-        // Insertar la tabla en el contenedor
+        tableHtml += `</tbody></table>`;
         resultsContainer.html(tableHtml);
     }
 
-    // TO-DO: Añadir listeners para los botones de acción si se implementan modales frontend
-    // resultsContainer.on('click', '.msh-change-availability-btn', function() { /* ... abrir modal capacidad ... */ });
-    // resultsContainer.on('click', '.msh-assign-schedule-btn', function() { /* ... abrir modal asignación ... */ });
+    // === Lógica Modales Frontend ===
+    function openFrontendModal(modalId, contentId, title) {
+         var width = $(window).width() * 0.8; var height = $(window).height() * 0.8; if (width > 800) width = 800; if (height > 650) height = 650;
+         var $modalContainer = $('#' + modalId); var $modalContent = $('#' + contentId);
+         $modalContainer.hide(); $modalContent.html('<p>' + (msh_frontend_data.modal_loading_form || 'Cargando...') + '</p>');
+         tb_show( title, '#TB_inline?width=' + width + '&height=' + height + '&inlineId=' + modalId, null );
+         resetFrontendClaseModalMessages();
+    }
 
-});
+    function closeFrontendModal(modalId, contentId) {
+        $('#' + contentId).empty(); $('#' + modalId).hide(); tb_remove();
+    }
+
+    function resetFrontendClaseModalMessages() { /* ... como antes ... */ }
+
+    // --- Listener Botón "Gestionar" (Tabla Frontend) ---
+    resultsContainer.on('click', '.msh-manage-assigned-btn', function(e) {
+        e.preventDefault();
+        var button = $(this); var claseId = button.data('clase-id'); var maestroId = button.data('maestro-id');
+        var nonce = msh_frontend_data.manage_clases_nonce;
+        if (!maestroId || !claseId || !nonce) { alert('Error: Datos/Nonce faltantes.'); return; }
+        openFrontendModal('msh-frontend-clase-modal-container', 'msh-frontend-clase-modal-content', msh_frontend_data.modal_title_manage_clase || 'Editar Clase');
+        $.ajax({
+            url: msh_frontend_data.ajax_url, type: 'POST',
+            data: { action: 'msh_load_clase_form', maestro_id: maestroId, clase_id: claseId, security: nonce },
+            success: function(response) {
+                if (response.success) {
+                    frontendModalContent.html(response.data.html + (msh_frontend_data.save_clase_nonce_field || ''));
+                    attachFrontendClaseModalListeners();
+                    if (response.data.maestro_availability) {
+                        initializeFrontendDynamicFiltering(response.data.maestro_availability);
+                        $('#msh-clase-form').find('#msh_clase_dia, #msh_clase_hora_inicio, #msh_clase_hora_fin').trigger('change');
+                    }
+                } else { frontendModalContent.html('<p style="color:red;">' + (response.data.message || 'Error.') + '</p>'); }
+            },
+            error: function() { frontendModalContent.html('<p style="color:red;">' + (msh_frontend_data.modal_error_loading || 'Error.') + '</p>'); }
+        });
+    });
+
+    // --- Listener Botón "Asignar" (Tabla Frontend) ---
+    resultsContainer.on('click', '.msh-assign-empty-btn', function(e) {
+         e.preventDefault();
+         var button = $(this); var maestroId = button.data('maestro-id'); var blockDetails = button.data('block-details');
+         var nonce = msh_frontend_data.manage_clases_nonce; var prefillData = {};
+         try { prefillData = (typeof blockDetails === 'string') ? JSON.parse(blockDetails) : blockDetails || {}; }
+         catch (err) { console.error("Error parsing block details:", err); alert("Error interno."); return; }
+         if (!maestroId || !nonce) { alert('Error: Datos/Nonce faltantes.'); return; }
+         openFrontendModal('msh-frontend-clase-modal-container', 'msh-frontend-clase-modal-content', msh_frontend_data.modal_title_assign_clase || 'Asignar Horario');
+         $.ajax({
+            url: msh_frontend_data.ajax_url, type: 'POST',
+            data: { action: 'msh_load_clase_form', maestro_id: maestroId, clase_id: 0, security: nonce },
+             success: function(response) {
+                if (response.success) {
+                    frontendModalContent.html(response.data.html + (msh_frontend_data.save_clase_nonce_field || ''));
+                    var form = $('#msh-clase-form');
+                    if (form.length && prefillData) { // Pre-rellenar
+                        if (prefillData.dia) form.find('#msh_clase_dia').val(prefillData.dia);
+                        if (prefillData.hora_inicio) form.find('#msh_clase_hora_inicio').val(prefillData.hora_inicio);
+                    }
+                    attachFrontendClaseModalListeners();
+                    if (response.data.maestro_availability) {
+                        initializeFrontendDynamicFiltering(response.data.maestro_availability);
+                        if (form.length) form.find('#msh_clase_dia, #msh_clase_hora_inicio, #msh_clase_hora_fin').trigger('change');
+                    }
+                } else { frontendModalContent.html('<p style="color:red;">' + (response.data.message || 'Error.') + '</p>'); }
+            },
+            error: function() { frontendModalContent.html('<p style="color:red;">' + (msh_frontend_data.modal_error_loading || 'Error.') + '</p>'); }
+        });
+    });
+
+    // --- Función Adjuntar Listeners Modal Clases (Frontend) ---
+    function attachFrontendClaseModalListeners() {
+         var modalForm = $('#msh-clase-form'); if (!modalForm.length) { console.error("Form #msh-clase-form not found in modal."); return; }
+         // Botón Cancelar
+         modalForm.find('.msh-cancel-clase-btn').off('click').on('click', function(e) { e.preventDefault(); closeFrontendModal('msh-frontend-clase-modal-container','msh-frontend-clase-modal-content'); });
+         // Submit
+         modalForm.off('submit').on('submit', function(e) {
+             e.preventDefault();
+             var form = $(this); var submitButton = form.find('#msh-save-clase-btn'); var spinner = form.find('.spinner');
+             var validationMsgDiv = form.find('#msh-clase-validation-messages').html('').hide(); var proximityWarningDiv = form.find('#msh-clase-proximity-warning').html('').hide();
+             submitButton.prop('disabled', true); spinner.addClass('is-active');
+             var startTime = form.find('#msh_clase_hora_inicio').val(); var endTime = form.find('#msh_clase_hora_fin').val();
+             if (startTime && endTime && endTime <= startTime) { validationMsgDiv.html(msh_frontend_data.validation_end_after_start || 'Hora fin debe ser posterior.').show(); submitButton.prop('disabled', false); spinner.removeClass('is-active'); return; }
+             var saveNonce = form.find('#msh_save_clase_nonce').val(); // Nonce DENTRO del formulario
+             if (!saveNonce) { validationMsgDiv.html('Error: Falta Nonce de guardado.').show(); submitButton.prop('disabled', false); spinner.removeClass('is-active'); return; }
+
+             $.ajax({
+                 url: msh_frontend_data.ajax_url, type: 'POST', data: form.serialize() + '&action=msh_save_clase&security=' + saveNonce,
+                 success: function(response) {
+                     if (response.success) {
+                         closeFrontendModal('msh-frontend-clase-modal-container','msh-frontend-clase-modal-content');
+                         alert(response.data.message || 'Guardado.');
+                         filterForm.trigger('submit'); // Refrescar tabla
+                     } else { validationMsgDiv.html(response.data.message || 'Error.').show(); submitButton.prop('disabled', false); }
+                 },
+                 error: function() { validationMsgDiv.html(msh_frontend_data.modal_error_saving || 'Error.').show(); submitButton.prop('disabled', false); },
+                 complete: function() { spinner.removeClass('is-active'); }
+             });
+         });
+    }
+
+    // --- Filtrado Dinámico y helpers (Frontend) ---
+    var currentFrontendModalAvailability = null; // Variable para guardar disponibilidad del modal actual
+    function initializeFrontendDynamicFiltering(availabilityData) {
+        var form = $('#msh-clase-form'); if (!form.length) return;
+        currentFrontendModalAvailability = availabilityData; // Guardar para usar en el handler
+        form.off('change', '#msh_clase_dia, #msh_clase_hora_inicio, #msh_clase_hora_fin') // Asegurar quitar listeners viejos
+            .on('change', '#msh_clase_dia, #msh_clase_hora_inicio, #msh_clase_hora_fin', checkFrontendAvailabilityAndUpdateDropdowns);
+    }
+
+     function checkFrontendAvailabilityAndUpdateDropdowns() {
+         var form = $('#msh-clase-form'); if (!form.length) return;
+         if (!currentFrontendModalAvailability) { console.warn("checkFrontendAvailability: Faltan datos de disponibilidad."); return; } // Salir si no hay datos
+         var diaSelect = form.find('#msh_clase_dia'); var horaInicioInput = form.find('#msh_clase_hora_inicio'); var horaFinInput = form.find('#msh_clase_hora_fin');
+         var sedeSelect = form.find('#msh_clase_sede_id'); var programaSelect = form.find('#msh_clase_programa_id'); var rangoSelect = form.find('#msh_clase_rango_id');
+         var hints = form.find('.msh-availability-hint'); var selectedDia = diaSelect.val(); var selectedHoraInicio = horaInicioInput.val(); var selectedHoraFin = horaFinInput.val();
+         var hintText = msh_frontend_data.availability_hint_text || 'No disponible/admisible.';
+
+         hints.hide();
+         sedeSelect.find('option').data('admisible', false); programaSelect.find('option').data('admisible', false); rangoSelect.find('option').data('admisible', false);
+
+         if (!selectedDia || !selectedHoraInicio || !selectedHoraFin || selectedHoraFin <= selectedHoraInicio) {
+             sedeSelect.find('option').prop('disabled', false).show(); programaSelect.find('option').prop('disabled', false).show(); rangoSelect.find('option').prop('disabled', false).show(); return;
+         }
+         var timeStart = selectedHoraInicio; var timeEnd = selectedHoraFin; var foundBlock = null; var admissibleSedes = []; var admissibleProgramas = []; var admissibleRangos = [];
+
+         if (Array.isArray(currentFrontendModalAvailability)) {
+             for (var i = 0; i < currentFrontendModalAvailability.length; i++) {
+                 var block = currentFrontendModalAvailability[i];
+                 if (block && block.dia === selectedDia && block.hora_inicio && block.hora_fin && timeStart >= block.hora_inicio && timeEnd <= block.hora_fin) {
+                     foundBlock = block; admissibleSedes = Array.isArray(block.sedes) ? block.sedes : []; admissibleProgramas = Array.isArray(block.programas) ? block.programas : []; admissibleRangos = Array.isArray(block.rangos) ? block.rangos : []; break;
+                 }
+             }
+         }
+         updateFrontendSelectOptions(sedeSelect, admissibleSedes, foundBlock, hintText);
+         updateFrontendSelectOptions(programaSelect, admissibleProgramas, foundBlock, hintText);
+         updateFrontendSelectOptions(rangoSelect, admissibleRangos, foundBlock, hintText);
+     }
+
+     function updateFrontendSelectOptions(selectElement, admissibleIds, foundBlock, hintText) {
+         if (!selectElement.length) return; var currentSelection = selectElement.val();
+         selectElement.find('option:not(:first-child)').prop('disabled', false).show();
+         selectElement.find('option:not(:first-child)').each(function() {
+             var option = $(this); var optionId = parseInt(option.val(), 10); var isAdmissible = admissibleIds.map(Number).includes(optionId);
+             option.data('admisible', isAdmissible); if (!isAdmissible) { option.prop('disabled', true).hide(); }
+         });
+         var selectedOption = selectElement.find('option[value="' + currentSelection + '"]');
+         if (currentSelection !== "" && selectedOption.length > 0 && selectedOption.prop('disabled')) { selectElement.val(""); } // Check if selectedOption exists
+         var hint = selectElement.closest('td').find('.msh-availability-hint');
+         if (!foundBlock) { selectElement.find('option:not(:first-child)').prop('disabled', true).hide(); selectElement.val(""); hint.html(hintText).show(); }
+         else if (selectElement.val() === "" && currentSelection !== "") { hint.html(hintText).show(); }
+         else { hint.hide(); }
+     }
+
+}); // Fin jQuery Ready
