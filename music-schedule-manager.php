@@ -24,6 +24,7 @@ require_once MSH_PLUGIN_DIR . 'includes/cpt-registrations.php';
 require_once MSH_PLUGIN_DIR . 'includes/admin/assets.php';
 require_once MSH_PLUGIN_DIR . 'includes/meta-boxes/maestro-disponibilidad.php';
 require_once MSH_PLUGIN_DIR . 'includes/meta-boxes/maestro-clases.php'; // *** AÑADIR ESTA LÍNEA ***
+require_once MSH_PLUGIN_DIR . 'includes/frontend/shortcode-viewer.php'; // <-- AÑADIR ESTA LÍNEA
 /**
  * Funciones de Activación / Desactivación
  * (Importante: Las funciones de registro de CPT deben estar definidas ANTES de llamar a flush_rewrite_rules)
