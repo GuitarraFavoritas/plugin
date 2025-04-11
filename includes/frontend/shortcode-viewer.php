@@ -189,6 +189,250 @@ function msh_get_cpt_id_title_map( $post_type ) {
     return $map;
 }
 
+/**
+ * Realiza la consulta compleja para obtener horarios disponibles y asignados.
+ *
+ * @param array $filters Array asociativo con los filtros aplicados.
+ *                       Ej: ['maestro_id' => 1, 'programa_id' => 10, 'sede_id' => 0, ...]
+ * @return array Array de resultados formateados para la tabla frontend.
+ */
+function msh_perform_complex_schedule_query( $filters = array() ) {
+
+    $final_results = array();
+
+    // 1. Obtener Maestros Relevantes
+    $maestro_args = array(
+        'post_type' => 'msh_maestro',
+        'post_status' => 'publish',
+        'numberposts' => -1,
+        'fields' => 'ids', // Solo necesitamos los IDs
+        'orderby' => 'title',
+        'order' => 'ASC'
+    );
+    if ( !empty($filters['maestro_id']) ) {
+        $maestro_args['post__in'] = array( $filters['maestro_id'] );
+    }
+    $maestro_ids = get_posts( $maestro_args );
+
+    if ( empty($maestro_ids) ) {
+        return $final_results; // No hay maestros que coincidan
+    }
+
+    // Helper para convertir HH:MM a minutos desde medianoche para facilitar comparaciones
+    $time_to_minutes = function($time_str) {
+        if (empty($time_str) || !preg_match('/^(\d{1,2}):(\d{2})$/', $time_str, $matches)) {
+            return false; // Formato inválido
+        }
+        return intval($matches[1]) * 60 + intval($matches[2]);
+    };
+
+    // 2. Iterar por cada Maestro
+    foreach ( $maestro_ids as $maestro_id ) {
+
+        // 2a. Obtener Disponibilidad General del Maestro
+        $availability_blocks = get_post_meta( $maestro_id, '_msh_maestro_disponibilidad', true );
+        if ( !is_array( $availability_blocks ) || empty( $availability_blocks ) ) {
+            continue; // Saltar maestro si no tiene disponibilidad definida
+        }
+
+        // Filtrar disponibilidad por día si se especificó
+        if ( !empty($filters['dia']) ) {
+            $availability_blocks = array_filter($availability_blocks, function($block) use ($filters) {
+                return isset($block['dia']) && $block['dia'] === $filters['dia'];
+            });
+        }
+
+        if ( empty($availability_blocks) ) {
+            continue; // Saltar maestro si no tiene disponibilidad para ese día
+        }
+
+        // 2b. Obtener Clases Programadas del Maestro (filtrando por día si es posible)
+        $clase_args = array(
+            'post_type' => 'msh_clase',
+            'post_status' => 'publish',
+            'numberposts' => -1,
+            'meta_query' => array(
+                'relation' => 'AND',
+                array(
+                    'key' => '_msh_clase_maestro_id',
+                    'value' => $maestro_id,
+                    'compare' => '=',
+                ),
+                // Añadir filtro de día aquí si se proporcionó
+                 (!empty($filters['dia']) ? array(
+                    'key' => '_msh_clase_dia',
+                    'value' => $filters['dia'],
+                    'compare' => '=',
+                ) : array()), // Array vacío si no hay filtro de día
+            ),
+            // Ordenar por hora de inicio para procesar en orden
+            'meta_key' => '_msh_clase_hora_inicio',
+            'orderby' => 'meta_value',
+            'order' => 'ASC',
+        );
+        // Remover el array vacío si no hubo filtro de día
+         if (empty($filters['dia'])) {
+             unset($clase_args['meta_query'][1]);
+         }
+
+        $scheduled_classes = get_posts( $clase_args );
+
+        // Crear un mapa de clases por día para acceso rápido
+        $classes_by_day = array();
+        foreach ($scheduled_classes as $clase_post) {
+             $clase_meta = get_post_meta($clase_post->ID); // Obtener todos los metas
+             $dia = $clase_meta['_msh_clase_dia'][0] ?? null;
+             if ($dia) {
+                 $classes_by_day[$dia][] = array(
+                     'id'          => $clase_post->ID,
+                     'hora_inicio' => $clase_meta['_msh_clase_hora_inicio'][0] ?? '',
+                     'hora_fin'    => $clase_meta['_msh_clase_hora_fin'][0] ?? '',
+                     'programa_id' => absint($clase_meta['_msh_clase_programa_id'][0] ?? 0),
+                     'sede_id'     => absint($clase_meta['_msh_clase_sede_id'][0] ?? 0),
+                     'rango_id'    => absint($clase_meta['_msh_clase_rango_id'][0] ?? 0),
+                     'capacidad'   => absint($clase_meta['_msh_clase_capacidad'][0] ?? 1),
+                     // 'inscritos' => 0, // Asumir 0 o implementar lógica si existe
+                 );
+             }
+        }
+
+        // 3. Procesar cada Bloque de Disponibilidad General
+        foreach ($availability_blocks as $avail_block) {
+             $current_day = $avail_block['dia'] ?? null;
+             if (!$current_day) continue; // Saltar bloque inválido
+
+            $avail_start_min = $time_to_minutes($avail_block['hora_inicio'] ?? '');
+            $avail_end_min = $time_to_minutes($avail_block['hora_fin'] ?? '');
+
+            if ($avail_start_min === false || $avail_end_min === false || $avail_end_min <= $avail_start_min) {
+                continue; // Saltar bloque con horario inválido
+            }
+
+            // Obtener clases que se solapan con ESTE bloque de disponibilidad en ESTE día
+            $overlapping_classes = array();
+            if (isset($classes_by_day[$current_day])) {
+                foreach ($classes_by_day[$current_day] as $clase) {
+                    $clase_start_min = $time_to_minutes($clase['hora_inicio']);
+                    $clase_end_min = $time_to_minutes($clase['hora_fin']);
+
+                    if ($clase_start_min !== false && $clase_end_min !== false &&
+                        $clase_start_min < $avail_end_min && $clase_end_min > $avail_start_min) // Solapamiento
+                    {
+                        $overlapping_classes[] = $clase;
+                    }
+                }
+                // Ordenar clases solapadas por hora de inicio (ya deberían estarlo por la query, pero por si acaso)
+                usort($overlapping_classes, function($a, $b) use ($time_to_minutes) {
+                    return $time_to_minutes($a['hora_inicio']) - $time_to_minutes($b['hora_inicio']);
+                });
+            }
+
+            // 4. Calcular Huecos (Slots Vacíos y Asignados)
+            $current_pointer_min = $avail_start_min;
+
+            foreach ($overlapping_classes as $clase) {
+                $clase_start_min = $time_to_minutes($clase['hora_inicio']);
+                $clase_end_min = $time_to_minutes($clase['hora_fin']);
+
+                 // Sanity check (en teoría ya filtrado, pero por si acaso)
+                 if ($clase_start_min === false || $clase_end_min === false || $clase_end_min <= $clase_start_min) continue;
+
+                // 4a. ¿Hay hueco ANTES de esta clase?
+                if ($clase_start_min > $current_pointer_min) {
+                    // Crear slot VACIO
+                    $final_results[] = array(
+                        'type' => 'vacio',
+                        'dia' => $current_day,
+                        'hora_inicio' => date('H:i', mktime(0, $current_pointer_min)),
+                        'hora_fin' => date('H:i', mktime(0, $clase_start_min)),
+                        'maestro_id' => $maestro_id,
+                        'programas_admisibles' => $avail_block['programas'] ?? [],
+                        'sedes_admisibles' => $avail_block['sedes'] ?? [],
+                        'rangos_admisibles' => $avail_block['rangos'] ?? []
+                    );
+                }
+
+                // 4b. Añadir slot ASIGNADO (la clase)
+                 $final_results[] = array(
+                     'type' => 'asignado',
+                     'dia' => $current_day,
+                     'hora_inicio' => $clase['hora_inicio'],
+                     'hora_fin' => $clase['hora_fin'],
+                     'maestro_id' => $maestro_id,
+                     'programa_id' => $clase['programa_id'],
+                     'sede_id' => $clase['sede_id'],
+                     'rango_id' => $clase['rango_id'],
+                     'capacidad' => $clase['capacidad'],
+                     'inscritos' => 0, // Placeholder
+                     'clase_id' => $clase['id']
+                 );
+
+                 // Mover el puntero al final de esta clase
+                 $current_pointer_min = $clase_end_min;
+            } // Fin loop clases solapadas
+
+            // 4c. ¿Hay hueco DESPUÉS de la última clase (o si no hubo clases)?
+            if ($current_pointer_min < $avail_end_min) {
+                 // Crear slot VACIO final
+                 $final_results[] = array(
+                     'type' => 'vacio',
+                     'dia' => $current_day,
+                     'hora_inicio' => date('H:i', mktime(0, $current_pointer_min)),
+                     'hora_fin' => date('H:i', mktime(0, $avail_end_min)),
+                     'maestro_id' => $maestro_id,
+                     'programas_admisibles' => $avail_block['programas'] ?? [],
+                     'sedes_admisibles' => $avail_block['sedes'] ?? [],
+                     'rangos_admisibles' => $avail_block['rangos'] ?? []
+                 );
+            }
+
+        } // Fin loop bloques disponibilidad
+
+    } // Fin loop maestros
+
+    // 5. Aplicar Filtros Finales (Programa, Sede, Rango, Hora Inicio)
+    $filtered_results = array_filter($final_results, function($slot) use ($filters, $time_to_minutes) {
+        // Filtro de Programa
+        if (!empty($filters['programa_id'])) {
+            if ($slot['type'] === 'asignado') {
+                if ($slot['programa_id'] != $filters['programa_id']) return false;
+            } else { // 'vacio'
+                if (!in_array($filters['programa_id'], $slot['programas_admisibles'])) return false;
+            }
+        }
+        // Filtro de Sede
+         if (!empty($filters['sede_id'])) {
+            if ($slot['type'] === 'asignado') {
+                if ($slot['sede_id'] != $filters['sede_id']) return false;
+            } else { // 'vacio'
+                if (!in_array($filters['sede_id'], $slot['sedes_admisibles'])) return false;
+            }
+        }
+        // Filtro de Rango Edad
+         if (!empty($filters['rango_id'])) {
+            if ($slot['type'] === 'asignado') {
+                if ($slot['rango_id'] != $filters['rango_id']) return false;
+            } else { // 'vacio'
+                if (!in_array($filters['rango_id'], $slot['rangos_admisibles'])) return false;
+            }
+        }
+        // Filtro de Hora Inicio (Mostrar slots que comiencen A PARTIR de la hora indicada)
+        if (!empty($filters['hora_inicio'])) {
+            $filter_start_min = $time_to_minutes($filters['hora_inicio']);
+            $slot_start_min = $time_to_minutes($slot['hora_inicio']);
+            if ($filter_start_min !== false && $slot_start_min !== false) {
+                if ($slot_start_min < $filter_start_min) return false;
+            }
+        }
+
+        return true; // Pasa todos los filtros
+    });
+
+    // 6. Re-indexar array y devolver
+    return array_values($filtered_results);
+}
+
+// --- Modificar el AJAX Handler para usar la nueva función ---
 
 /**
  * Manejador AJAX para filtrar los horarios.
@@ -211,66 +455,8 @@ function msh_ajax_filter_schedule_handler() {
         $filters['hora_inicio'] = ''; // Invalidar si el formato no es correcto
     }
 
-    // 3. *** PUNTO CRÍTICO: AQUÍ IRÍA LA CONSULTA COMPLEJA ***
-    // Esta función debería:
-    //    - Usar los $filters.
-    //    - Consultar disponibilidad general y clases programadas.
-    //    - Calcular los huecos vacíos.
-    //    - Devolver un array estructurado con los resultados.
-    // $results = msh_perform_complex_schedule_query( $filters );
-
-    // ---- PLACEHOLDER POR AHORA ----
-    // Simular algunos resultados para probar la tabla JS
-    $results = array();
-    if ($filters['maestro_id'] || $filters['programa_id'] || $filters['sede_id'] || $filters['rango_id'] || $filters['dia'] || $filters['hora_inicio']) {
-         // Solo simular resultados si se aplicó algún filtro (para no mostrar todo por defecto)
-        $results = array(
-            // Ejemplo Horario Asignado
-            array(
-                'type' => 'asignado', // 'asignado' o 'vacio'
-                'dia' => 'lunes',
-                'hora_inicio' => '09:00',
-                'hora_fin' => '09:45',
-                'maestro_id' => 1, // ID del Maestro
-                'programa_id' => 10, // ID Programa específico
-                'sede_id' => 20, // ID Sede específica
-                'rango_id' => 30, // ID Rango específico
-                'capacidad' => 5,
-                'inscritos' => 3, // Necesitarías esta info para calcular vacantes
-                'clase_id' => 101 // ID del post msh_clase
-            ),
-             // Ejemplo Horario Vacío
-            array(
-                'type' => 'vacio',
-                'dia' => 'lunes',
-                'hora_inicio' => '10:00',
-                'hora_fin' => '12:00',
-                'maestro_id' => 1,
-                'programas_admisibles' => array(10, 11), // IDs Programas admisibles
-                'sedes_admisibles' => array(20), // IDs Sedes admisibles
-                'rangos_admisibles' => array(30, 31) // IDs Rangos admisibles
-            ),
-            // Otro ejemplo asignado
-             array(
-                'type' => 'asignado',
-                'dia' => 'martes',
-                'hora_inicio' => '16:00',
-                'hora_fin' => '17:30',
-                'maestro_id' => 2,
-                'programa_id' => 12,
-                'sede_id' => 21,
-                'rango_id' => 32,
-                'capacidad' => 1,
-                'inscritos' => 0,
-                'clase_id' => 105
-            ),
-        );
-        // Filtrar resultados simulados (muy básico)
-        if ($filters['maestro_id']) $results = array_filter($results, fn($r) => $r['maestro_id'] == $filters['maestro_id']);
-        if ($filters['dia']) $results = array_filter($results, fn($r) => $r['dia'] == $filters['dia']);
-         // ... añadir filtros básicos para programa, sede, rango si es necesario para la simulación
-    }
-    // ---- FIN PLACEHOLDER ----
+    // 3. Llamar a la función de consulta compleja
+    $results = msh_perform_complex_schedule_query( $filters );
 
 
     // 4. Preparar y Enviar Respuesta JSON
