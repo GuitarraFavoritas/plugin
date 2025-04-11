@@ -2,526 +2,565 @@
 jQuery(document).ready(function($) {
 
     // ============================================================
-    // =      CÓDIGO: GESTIÓN DISPONIBILIDAD REPETIBLE           =
+    // =                VERIFICACIÓN INICIAL                     =
     // ============================================================
-    // Renombramos las variables y funciones para evitar conflictos
-    var containerDisponibilidad = $('#msh-bloques-disponibilidad');
-    var templateDisponibilidadHtml = $('#msh-bloque-plantilla').html();
-    var noBloquesMsgSelector = '#msh-no-bloques';
 
-    // --- Función para actualizar índices y UI de Disponibilidad ---
-    function msh_update_availability_rows() {
-        var rows = containerDisponibilidad.find('.msh-bloque-row');
-        rows.each(function(rowIndex) {
-            $(this).find('select, input').each(function() {
-                var name = $(this).attr('name');
-                if (name) {
-                    // Regex más específica para el formato msh_disponibilidad[INDEX]...
-                    var newName = name.replace(/msh_disponibilidad\[(\d+|{{INDEX}})\]/, 'msh_disponibilidad[' + rowIndex + ']');
-                    $(this).attr('name', newName);
-
-                    var id = $(this).attr('id');
-                    if (id) {
-                         // Regex para ID: msh_disponibilidad_INDEX_campo o msh_disponibilidad_NUMBER_campo
-                        var oldIdPattern = /msh_disponibilidad_(\d+|{{INDEX}})_/;
-                        if(oldIdPattern.test(id)){
-                            var newId = id.replace(oldIdPattern, 'msh_disponibilidad_' + rowIndex + '_');
-                            $(this).attr('id', newId);
-                            // Actualizar label 'for' asociada
-                           $(this).closest('.msh-bloque-field-group').find('label[for="' + id.replace(/\[/g, '\\[').replace(/\]/g, '\\]') + '"]').attr('for', newId); // Escapar corchetes si se usan en IDs
-                           // O si la label siempre sigue el patrón de ID:
-                           // $('label[for="' + id + '"]').attr('for', newId); // Menos robusto si el ID cambia mucho
-                        }
-                    }
-                }
-            });
-        });
-
-        // Mostrar/ocultar mensaje si no hay bloques (usando texto de msh_admin_data)
-        var noBlocksMsgText = (typeof msh_admin_data !== 'undefined' && msh_admin_data.no_blocks_msg)
-                               ? msh_admin_data.no_blocks_msg
-                               : 'Aún no se han añadido bloques de disponibilidad.'; // Fallback
-
-        if (rows.length === 0) {
-            if ($(noBloquesMsgSelector).length === 0) {
-                containerDisponibilidad.append('<p id="' + noBloquesMsgSelector.substring(1) + '">' + noBlocksMsgText + '</p>');
-            }
-            $(noBloquesMsgSelector).show();
-        } else {
-            $(noBloquesMsgSelector).remove();
-        }
+    // Asegurarse que msh_admin_data exista y tenga las propiedades esenciales
+    if (typeof msh_admin_data === 'undefined' || !msh_admin_data.ajax_url || !msh_admin_data.post_id) {
+        console.error('MSH Error: msh_admin_data no está definido o le faltan propiedades esenciales (ajax_url, post_id). Verifica wp_localize_script en assets.php.');
+        // Podrías mostrar un mensaje de error al usuario en la página si lo deseas
+        $('#msh-disponibilidad-manager-container, .msh-clases-container').html('<p style="color:red;">Error crítico: Faltan datos de configuración del plugin.</p>');
+        return; // Detener la ejecución si faltan datos críticos
     }
 
-    // --- Añadir Bloque de Disponibilidad ---
-    $('#msh-add-bloque').on('click', function(e) {
-        e.preventDefault();
-        if (!templateDisponibilidadHtml) {
-             console.error("MSH Error: Plantilla de bloque de disponibilidad no encontrada.");
-             return;
-        }
-        var nextIndex = containerDisponibilidad.find('.msh-bloque-row').length;
-        // Usar regex global 'g' para reemplazar todas las ocurrencias de {{INDEX}}
-        var nuevoBloqueHtml = templateDisponibilidadHtml.replace(/\{\{INDEX\}\}/g, nextIndex);
-        containerDisponibilidad.append(nuevoBloqueHtml);
-        msh_update_availability_rows(); // Llamar a la función renombrada
-    });
-
-    // --- Eliminar Bloque de Disponibilidad (con delegación) ---
-    containerDisponibilidad.on('click', '.msh-remove-bloque', function(e) {
-        e.preventDefault();
-        // Usar texto de confirmación de msh_admin_data
-        var confirmMsg = (typeof msh_admin_data !== 'undefined' && msh_admin_data.confirm_delete_disponibilidad)
-                         ? msh_admin_data.confirm_delete_disponibilidad
-                         : '¿Estás seguro de que quieres eliminar este bloque de disponibilidad?'; // Fallback
-        if (confirm(confirmMsg)) {
-            $(this).closest('.msh-bloque-row').remove();
-            msh_update_availability_rows(); // Llamar a la función renombrada
-        }
-    });
-
-    // --- Inicializar UI de Disponibilidad al cargar ---
-    msh_update_availability_rows();
-
-    // --- Opcional: Sortable para Disponibilidad ---
-    /*
-    if ($.fn.sortable && containerDisponibilidad.length > 0) {
-         containerDisponibilidad.sortable({
-             handle: '.msh-drag-handle',
-             items: '.msh-bloque-row',
-             axis: 'y',
-             placeholder: 'msh-sortable-placeholder',
-             forcePlaceholderSize: true,
-             update: function( event, ui ) {
-                 msh_update_availability_rows();
-             }
-         }).disableSelection();
-     }
-    */
-
-
     // ============================================================
-    // =      NUEVO CÓDIGO: GESTIÓN DE CLASES PROGRAMADAS         =
+    // =           VARIABLES Y HELPERS GLOBALES (Dentro de ready) =
     // ============================================================
 
-    // Asegurarse que msh_admin_data exista antes de usarlo
-    if (typeof msh_admin_data === 'undefined') {
-        console.error('MSH Error: msh_admin_data no está definido. Verifica wp_localize_script.');
-        return; // Detener la ejecución si faltan datos esenciales
-    }
-
+    // --- Contenedores principales ---
+    var availabilityManagerContainer = $('#msh-disponibilidad-manager-container');
     var maestroClasesContainer = $('.msh-clases-container');
-    var modalContainer = $('#msh-clase-modal-container');
-    var modalContent = $('#msh-clase-modal-content');
+
+    // --- Disponibilidad General ---
+    var availabilityTableBody = $('#msh-availability-list');
+    var availabilityModalContainer = $('#msh-availability-modal-container');
+    var availabilityModalContent = $('#msh-availability-modal-content');
+    var saveAvailabilityButton = $('#msh-save-availability-changes-btn');
+    var availabilitySpinner = $('#msh-availability-spinner');
+    var availabilitySaveStatus = $('#msh-availability-save-status');
+    let currentAvailabilityData = msh_admin_data.availability_initial_data || [];
+    let availabilityChangesMade = false;
+
+    // --- Clases Programadas ---
+    var clasesModalContainer = $('#msh-clase-modal-container');
+    var clasesModalContent = $('#msh-clase-modal-content');
     var clasesTableBody = $('#msh-clases-list');
-    var maestroAvailabilityData = null;
+    let clasesMaestroAvailabilityData = null; // Disponibilidad específica para el modal de clases
 
-    // --- Helpers para Modal ---
-    function openClaseModal() {
+     // --- Helper: Obtener nombre del día ---
+     function getDayName(dayKey) {
+         return (msh_admin_data.days_of_week && msh_admin_data.days_of_week[dayKey]) ? msh_admin_data.days_of_week[dayKey] : dayKey;
+     }
+
+    // ============================================================
+    // =      GESTIÓN DISPONIBILIDAD GENERAL (TABLA / MODAL)      =
+    // ============================================================
+
+    // --- Función de comparación JS para ordenar disponibilidad ---
+     function sortAvailabilityCallbackJS(a, b) {
+        const dayOrder = Object.keys(msh_admin_data.days_of_week || {});
+        const orderA = dayOrder.indexOf(a.dia);
+        const orderB = dayOrder.indexOf(b.dia);
+
+        if (orderA !== orderB) {
+            return (orderA === -1 ? 99 : orderA) - (orderB === -1 ? 99 : orderB);
+        }
+        const timeA = a.hora_inicio || '99:99';
+        const timeB = b.hora_inicio || '99:99';
+        if (timeA < timeB) return -1;
+        if (timeA > timeB) return 1;
+        return 0;
+    }
+
+    // --- Función para Renderizar la Tabla de Disponibilidad ---
+    function renderAvailabilityTable() {
+        availabilityTableBody.empty();
+        const hasSedeNames = typeof msh_admin_data.sede_names === 'object' && msh_admin_data.sede_names !== null;
+        const hasProgramaNames = typeof msh_admin_data.programa_names === 'object' && msh_admin_data.programa_names !== null;
+        const hasRangoNames = typeof msh_admin_data.rango_names === 'object' && msh_admin_data.rango_names !== null;
+
+        if (!currentAvailabilityData || currentAvailabilityData.length === 0) {
+            $('#msh-no-availability-row').show();
+            $('#msh-availability-loading-row').hide();
+        } else {
+            $('#msh-no-availability-row').hide();
+            $('#msh-availability-loading-row').hide();
+            currentAvailabilityData.sort(sortAvailabilityCallbackJS);
+
+            $.each(currentAvailabilityData, function(index, block) {
+                let sedeNamesArray = Array.isArray(block.sedes) ? block.sedes.map(id => (hasSedeNames && msh_admin_data.sede_names[id]) || `ID:${id}?`).filter(name => name) : [];
+                let programaNamesArray = Array.isArray(block.programas) ? block.programas.map(id => (hasProgramaNames && msh_admin_data.programa_names[id]) || `ID:${id}?`).filter(name => name) : [];
+                let rangoNamesArray = Array.isArray(block.rangos) ? block.rangos.map(id => (hasRangoNames && msh_admin_data.rango_names[id]) || `ID:${id}?`).filter(name => name) : [];
+
+                let sedeDisplay = sedeNamesArray.length > 0 ? sedeNamesArray.join(', ') : '<em>Ninguna</em>';
+                let programaDisplay = programaNamesArray.length > 0 ? programaNamesArray.join(', ') : '<em>Ninguno</em>';
+                let rangoDisplay = rangoNamesArray.length > 0 ? rangoNamesArray.join(', ') : '<em>Ninguno</em>';
+
+                const maxDisplayLength = 50;
+                let sedeTitleAttr = sedeNamesArray.join(', ');
+                let programaTitleAttr = programaNamesArray.join(', ');
+                let rangoTitleAttr = rangoNamesArray.join(', ');
+
+                if (sedeDisplay.length > maxDisplayLength) sedeDisplay = sedeDisplay.substring(0, maxDisplayLength) + '...';
+                if (programaDisplay.length > maxDisplayLength) programaDisplay = programaDisplay.substring(0, maxDisplayLength) + '...';
+                if (rangoDisplay.length > maxDisplayLength) rangoDisplay = rangoDisplay.substring(0, maxDisplayLength) + '...';
+
+                // Botones (usando textos localizados con fallbacks)
+                let editButtonText = msh_admin_data.text_modal_edit_button || 'Editar';
+                let deleteButtonText = msh_admin_data.text_delete_button || 'Eliminar'; // Asumiendo que tienes 'text_delete_button'
+
+                let rowHtml = `
+                    <tr id="msh-availability-row-${index}" data-index="${index}">
+                        <td>${getDayName(block.dia)}</td>
+                        <td>${block.hora_inicio || ''} - ${block.hora_fin || ''}</td>
+                        <td title="${sedeTitleAttr}">${sedeDisplay}</td>
+                        <td title="${programaTitleAttr}">${programaDisplay}</td>
+                        <td title="${rangoTitleAttr}">${rangoDisplay}</td>
+                        <td>
+                            <button type="button" class="button button-small msh-edit-availability" data-index="${index}">${editButtonText}</button>
+                            <button type="button" class="button button-small button-link-delete msh-delete-availability" data-index="${index}">${deleteButtonText}</button>
+                        </td>
+                    </tr>
+                `;
+                availabilityTableBody.append(rowHtml);
+            });
+        }
+        updateSaveButtonState();
+    }
+
+    // --- Función para Actualizar Estado del Botón Guardar Disponibilidad ---
+    function updateSaveButtonState() {
+        saveAvailabilityButton.prop('disabled', !availabilityChangesMade);
+        if (!availabilityChangesMade) {
+            availabilitySaveStatus.text(''); // Limpiar estado si no hay cambios
+        }
+    }
+
+    // --- Helpers para Modal de Disponibilidad ---
+    function openAvailabilityModal(title) {
         var width = $(window).width() * 0.8;
-        var height = $(window).height() * 0.8;
-        if (width > 800) width = 800;
-        if (height > 650) height = 650;
+        var height = $(window).height() * 0.9;
+        if (width > 850) width = 850;
+        if (height > 750) height = 750;
 
-        // Usar texto del objeto localizado
+        availabilityModalContainer.hide(); // Ocultar primero
+        availabilityModalContent.html('<p>' + (msh_admin_data.text_loading_availability_form || 'Cargando...') + '</p>');
+
         tb_show(
-            msh_admin_data.modal_title_manage_clase || 'Gestionar Clase Programada',
-            '#TB_inline?width=' + width + '&height=' + height + '&inlineId=msh-clase-modal-container',
+            title || 'Gestionar Disponibilidad',
+            '#TB_inline?width=' + width + '&height=' + height + '&inlineId=msh-availability-modal-container',
             null
         );
-        modalContainer.show();
-        resetModalMessages();
+        // tb_show hará visible el contenedor por su ID en el href
+        resetAvailabilityModalMessages();
+    }
+
+    function closeAvailabilityModal() {
+        availabilityModalContent.empty(); // Vaciar contenido
+        availabilityModalContainer.hide(); // Ocultar contenedor
+        tb_remove(); // Cerrar ThickBox
+    }
+
+    function resetAvailabilityModalMessages() {
+         var form = $('#msh-availability-form');
+         if (form.length) {
+             form.find('#msh-availability-validation-messages').html('').hide();
+         } else {
+             // Si el form no existe, intentar limpiar directamente en el contenedor
+             availabilityModalContent.find('#msh-availability-validation-messages').remove();
+         }
+     }
+
+    // --- Abrir Modal Añadir Disponibilidad ---
+    availabilityManagerContainer.on('click', '#msh-add-availability-btn', function(e) {
+        e.preventDefault();
+        openAvailabilityModal(msh_admin_data.text_modal_title_add_availability || 'Añadir Bloque');
+        var nonce = msh_admin_data.manage_availability_nonce;
+        if (!nonce) { availabilityModalContent.html('<p style="color:red;">Error: Nonce Faltante.</p>'); return; }
+
+        $.ajax({
+            url: msh_admin_data.ajax_url, type: 'POST',
+            data: {
+                action: 'msh_load_disponibilidad_form',
+                maestro_id: msh_admin_data.post_id,
+                block_index: -1, block_data: JSON.stringify({}), security: nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    availabilityModalContent.html(response.data.html);
+                    attachAvailabilityModalListeners(); // Adjuntar listeners al nuevo contenido
+                } else { availabilityModalContent.html('<p style="color:red;">' + (response.data.message || 'Error.') + '</p>'); }
+            },
+            error: function() { availabilityModalContent.html('<p style="color:red;">' + (msh_admin_data.modal_error_loading || 'Error de conexión.') + '</p>'); }
+        });
+    });
+
+    // --- Abrir Modal Editar Disponibilidad ---
+    availabilityManagerContainer.on('click', '.msh-edit-availability', function(e) {
+        e.preventDefault();
+        var index = $(this).data('index');
+        if (typeof index === 'undefined' || !currentAvailabilityData[index]) { alert('Error: Bloque no encontrado.'); return; }
+        var blockData = currentAvailabilityData[index];
+        openAvailabilityModal(msh_admin_data.text_modal_title_edit_availability || 'Editar Bloque');
+        var nonce = msh_admin_data.manage_availability_nonce;
+        if (!nonce) { availabilityModalContent.html('<p style="color:red;">Error: Nonce Faltante.</p>'); return; }
+
+        $.ajax({
+            url: msh_admin_data.ajax_url, type: 'POST',
+            data: {
+                action: 'msh_load_disponibilidad_form',
+                maestro_id: msh_admin_data.post_id,
+                block_index: index, block_data: JSON.stringify(blockData), security: nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    availabilityModalContent.html(response.data.html);
+                    attachAvailabilityModalListeners(); // Adjuntar listeners al nuevo contenido
+                } else { availabilityModalContent.html('<p style="color:red;">' + (response.data.message || 'Error.') + '</p>'); }
+            },
+            error: function() { availabilityModalContent.html('<p style="color:red;">' + (msh_admin_data.modal_error_loading || 'Error de conexión.') + '</p>'); }
+        });
+    });
+
+    // --- Función para Adjuntar Listeners al Modal de Disponibilidad ---
+    function attachAvailabilityModalListeners() {
+        var modalForm = $('#msh-availability-form');
+        if (!modalForm.length) return; // Salir si el form no está
+
+        // Botón Cancelar (usar .one() o .off().on() para seguridad)
+        modalForm.find('.msh-cancel-availability-btn').off('click').on('click', function(e) {
+            e.preventDefault();
+            closeAvailabilityModal();
+        });
+
+        // Submit del Formulario (Añadir/Actualizar en array JS)
+        modalForm.off('submit').on('submit', function(e) {
+             e.preventDefault();
+             var form = $(this);
+             var validationDiv = form.find('#msh-availability-validation-messages').html('').hide();
+             var blockData = {};
+             var blockIndex = parseInt(form.find('input[name="block_index"]').val(), 10);
+
+             blockData.dia = form.find('#msh_avail_dia').val();
+             blockData.hora_inicio = form.find('#msh_avail_hora_inicio').val();
+             blockData.hora_fin = form.find('#msh_avail_hora_fin').val();
+             blockData.sedes = form.find('#msh_avail_sedes').val() || [];
+             blockData.programas = form.find('#msh_avail_programas').val() || [];
+             blockData.rangos = form.find('#msh_avail_rangos').val() || [];
+
+             var errors = [];
+             if (!blockData.dia) errors.push('El campo Día es obligatorio.');
+             if (!blockData.hora_inicio) errors.push('El campo Hora Inicio es obligatorio.');
+             if (!blockData.hora_fin) errors.push('El campo Hora Fin es obligatorio.');
+             if (blockData.hora_inicio && blockData.hora_fin && blockData.hora_fin <= blockData.hora_inicio) {
+                 errors.push(msh_admin_data.text_validation_end_after_start || 'Hora fin debe ser posterior a inicio.');
+             }
+             var isDuplicate = false;
+             for (var i = 0; i < currentAvailabilityData.length; i++) {
+                 if (blockIndex !== -1 && i === blockIndex) continue;
+                 if (currentAvailabilityData[i].dia === blockData.dia && currentAvailabilityData[i].hora_inicio === blockData.hora_inicio) {
+                     isDuplicate = true; break;
+                 }
+             }
+             if (isDuplicate) { errors.push(msh_admin_data.text_validation_duplicate_slot || 'Horario duplicado.'); }
+
+             if (errors.length > 0) {
+                 validationDiv.html(errors.join('<br>')).show();
+                 return;
+             }
+
+             if (blockIndex === -1) { currentAvailabilityData.push(blockData); }
+             else { currentAvailabilityData[blockIndex] = blockData; }
+
+             availabilityChangesMade = true;
+             renderAvailabilityTable();
+             closeAvailabilityModal();
+         });
+    }
+
+    // --- Eliminar Bloque de Disponibilidad (Actualiza array JS) ---
+    availabilityManagerContainer.on('click', '.msh-delete-availability', function(e) {
+        e.preventDefault();
+        var index = $(this).data('index');
+        if (typeof index === 'undefined' || !currentAvailabilityData[index]) { console.error('Índice inválido'); return; }
+        var confirmMsg = msh_admin_data.text_confirm_delete_availability || '¿Eliminar este bloque?';
+        if (confirm(confirmMsg)) {
+            currentAvailabilityData.splice(index, 1);
+            availabilityChangesMade = true;
+            renderAvailabilityTable();
+        }
+     });
+
+    // --- Guardar TODOS los Cambios de Disponibilidad (AJAX) ---
+    availabilityManagerContainer.on('click', '#msh-save-availability-changes-btn', function(e) {
+        e.preventDefault();
+        var button = $(this);
+        if (!availabilityChangesMade || button.prop('disabled')) return;
+        var nonce = $('#msh_save_disponibilidad_nonce').val();
+        if (!nonce) { availabilitySaveStatus.text('Error: Nonce Faltante.').css('color', 'red'); return; }
+
+        button.prop('disabled', true);
+        availabilitySpinner.addClass('is-active');
+        availabilitySaveStatus.text(msh_admin_data.text_saving_availability || 'Guardando...').css('color', '');
+
+        $.ajax({
+            url: msh_admin_data.ajax_url, type: 'POST',
+            data: {
+                action: 'msh_save_disponibilidad',
+                maestro_id: msh_admin_data.post_id,
+                availability_data: JSON.stringify(currentAvailabilityData),
+                security: nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    availabilityChangesMade = false;
+                    availabilitySaveStatus.text(response.data.message || 'Guardado.').css('color', 'green');
+                    updateSaveButtonState();
+                } else {
+                    availabilitySaveStatus.html(msh_admin_data.text_availability_save_error + '<br>' + (response.data.message || 'Error.')).css('color', 'red');
+                    button.prop('disabled', false);
+                }
+            },
+            error: function() {
+                 availabilitySaveStatus.text(msh_admin_data.modal_error_saving || 'Error de conexión.').css('color', 'red');
+                 button.prop('disabled', false);
+            },
+            complete: function() {
+                availabilitySpinner.removeClass('is-active');
+                setTimeout(function(){ availabilitySaveStatus.text(''); }, 5000);
+            }
+        });
+    });
+
+    // --- Inicialización Disponibilidad ---
+    renderAvailabilityTable();
+
+
+    // ============================================================
+    // =          GESTIÓN DE CLASES PROGRAMADAS (MODAL)           =
+    // ============================================================
+
+    // --- Helpers para Modal de Clases ---
+    function openClaseModal() {
+         var width = $(window).width() * 0.8; var height = $(window).height() * 0.8;
+         if (width > 800) width = 800; if (height > 650) height = 650;
+         clasesModalContainer.hide(); // Ocultar primero
+         clasesModalContent.html('<p>' + (msh_admin_data.modal_loading_form || 'Cargando...') + '</p>');
+         tb_show(
+             msh_admin_data.modal_title_manage_clase || 'Gestionar Clase',
+             '#TB_inline?width=' + width + '&height=' + height + '&inlineId=msh-clase-modal-container', null
+         );
+         resetClaseModalMessages();
     }
 
     function closeClaseModal() {
+        clasesModalContent.empty();
+        clasesModalContainer.hide();
         tb_remove();
-        // Usar texto del objeto localizado
-        modalContent.html('<p>' + (msh_admin_data.modal_loading_form || 'Cargando formulario...') + '</p>');
-        maestroAvailabilityData = null;
+        clasesMaestroAvailabilityData = null; // Limpiar datos de disponibilidad para este modal
     }
 
-    function resetModalMessages() {
-        // Asegurarse que el formulario exista antes de buscar elementos dentro
-        var form = $('#msh-clase-form');
-        if (form.length) {
+    function resetClaseModalMessages() {
+         var form = $('#msh-clase-form');
+         if (form.length) {
              form.find('#msh-clase-validation-messages').html('').hide();
              form.find('#msh-clase-proximity-warning').html('').hide();
              form.find('.spinner').removeClass('is-active');
              form.find('#msh-save-clase-btn').prop('disabled', false);
-        } else {
-             // Si el form no existe aún (al abrir modal), limpiar el contenedor principal
-             modalContent.find('#msh-clase-validation-messages').remove();
-             modalContent.find('#msh-clase-proximity-warning').remove();
-        }
+         } else {
+             clasesModalContent.find('#msh-clase-validation-messages').remove();
+             clasesModalContent.find('#msh-clase-proximity-warning').remove();
+         }
     }
 
-    // --- Abrir Modal para Añadir Nueva Clase ---
-    maestroClasesContainer.on('click', '#msh-add-new-clase-btn', function(e) {
+    // --- Abrir Modal Añadir Clase ---
+     maestroClasesContainer.on('click', '#msh-add-new-clase-btn', function(e){
         e.preventDefault();
-        resetModalMessages();
-        modalContent.html('<p>' + (msh_admin_data.modal_loading_form || 'Cargando formulario...') + '</p>');
         openClaseModal();
-
-        var maestroId = $(this).data('maestro-id');
-        // Usar nonce del objeto localizado
         var nonce = msh_admin_data.manage_clases_nonce;
-
-        if (!nonce) {
-            modalContent.html('<p style="color:red;">Error: Nonce de seguridad no encontrado.</p>');
-            return;
-        }
-
+        if (!nonce) { clasesModalContent.html('<p style="color:red;">Error: Nonce Faltante.</p>'); return; }
         $.ajax({
-            // Usar URL ajax del objeto localizado
-            url: msh_admin_data.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'msh_load_clase_form',
-                maestro_id: maestroId,
-                clase_id: 0,
-                security: nonce // Nombre del campo nonce esperado por check_ajax_referer
-            },
+            url: msh_admin_data.ajax_url, type: 'POST',
+            data: { action: 'msh_load_clase_form', maestro_id: $(this).data('maestro-id'), clase_id: 0, security: nonce },
             success: function(response) {
                 if (response.success) {
-                    modalContent.html(response.data.html);
-                    maestroAvailabilityData = response.data.maestro_availability;
-                    initializeDynamicFiltering();
-                } else {
-                    modalContent.html('<p style="color:red;">' + (response.data.message || 'Error desconocido.') + '</p>');
-                }
+                    clasesModalContent.html(response.data.html);
+                    clasesMaestroAvailabilityData = response.data.maestro_availability;
+                    attachClaseModalListeners(); // Adjuntar listeners
+                    initializeDynamicFiltering(); // Inicializar filtros
+                } else { clasesModalContent.html('<p style="color:red;">' + (response.data.message || 'Error.') + '</p>'); }
             },
-            error: function() {
-                // Usar texto del objeto localizado
-                modalContent.html('<p style="color:red;">' + (msh_admin_data.modal_error_loading || 'Error de conexión al cargar el formulario.') + '</p>');
-            }
+            error: function() { clasesModalContent.html('<p style="color:red;">' + (msh_admin_data.modal_error_loading || 'Error.') + '</p>'); }
         });
-    });
+     });
 
-    // --- Abrir Modal para Editar Clase ---
-    maestroClasesContainer.on('click', '.msh-edit-clase', function(e) {
-        e.preventDefault();
-        resetModalMessages();
-        modalContent.html('<p>' + (msh_admin_data.modal_loading_form || 'Cargando formulario...') + '</p>');
-        openClaseModal();
+     // --- Abrir Modal Editar Clase ---
+     maestroClasesContainer.on('click', '.msh-edit-clase', function(e){
+         e.preventDefault();
+         var claseId = $(this).data('clase-id');
+         openClaseModal();
+         var nonce = msh_admin_data.manage_clases_nonce;
+         if (!nonce) { clasesModalContent.html('<p style="color:red;">Error: Nonce Faltante.</p>'); return; }
+         $.ajax({
+             url: msh_admin_data.ajax_url, type: 'POST',
+             data: { action: 'msh_load_clase_form', maestro_id: $('#msh-add-new-clase-btn').data('maestro-id'), clase_id: claseId, security: nonce },
+             success: function(response) {
+                 if (response.success) {
+                     clasesModalContent.html(response.data.html);
+                     clasesMaestroAvailabilityData = response.data.maestro_availability;
+                     attachClaseModalListeners(); // Adjuntar listeners
+                     initializeDynamicFiltering(); // Inicializar filtros
+                     // Forzar chequeo inicial al editar
+                      var form = $('#msh-clase-form');
+                      if (form.length) { form.find('#msh_clase_dia, #msh_clase_hora_inicio, #msh_clase_hora_fin').trigger('change'); }
+                 } else { clasesModalContent.html('<p style="color:red;">' + (response.data.message || 'Error.') + '</p>'); }
+             },
+             error: function() { clasesModalContent.html('<p style="color:red;">' + (msh_admin_data.modal_error_loading || 'Error.') + '</p>'); }
+         });
+     });
 
-        var claseId = $(this).data('clase-id');
-        var maestroId = $('#msh-add-new-clase-btn').data('maestro-id');
-        var nonce = msh_admin_data.manage_clases_nonce;
+     // --- Función para Adjuntar Listeners al Modal de Clases ---
+     function attachClaseModalListeners() {
+         var modalForm = $('#msh-clase-form');
+         if (!modalForm.length) return;
 
-         if (!nonce) {
-            modalContent.html('<p style="color:red;">Error: Nonce de seguridad no encontrado.</p>');
-            return;
-        }
+         // Botón Cancelar
+         modalForm.find('.msh-cancel-clase-btn').off('click').on('click', function(e) {
+             e.preventDefault();
+             closeClaseModal();
+         });
 
-        $.ajax({
-            url: msh_admin_data.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'msh_load_clase_form',
-                maestro_id: maestroId,
-                clase_id: claseId,
-                security: nonce
-            },
-            success: function(response) {
-                if (response.success) {
-                    modalContent.html(response.data.html);
-                    maestroAvailabilityData = response.data.maestro_availability;
-                    initializeDynamicFiltering();
-                     // Forzar chequeo al cargar datos de edición
-                     var form = $('#msh-clase-form');
-                     if (form.length) {
-                        form.find('#msh_clase_dia, #msh_clase_hora_inicio, #msh_clase_hora_fin').trigger('change');
+         // Submit del Formulario (AJAX save_clase)
+         modalForm.off('submit').on('submit', function(e) {
+             e.preventDefault();
+             var form = $(this);
+             var submitButton = form.find('#msh-save-clase-btn');
+             var spinner = form.find('.spinner');
+             var validationMsgDiv = form.find('#msh-clase-validation-messages');
+             var proximityWarningDiv = form.find('#msh-clase-proximity-warning');
+
+             validationMsgDiv.html('').hide(); proximityWarningDiv.html('').hide();
+             submitButton.prop('disabled', true); spinner.addClass('is-active');
+
+             var startTime = form.find('#msh_clase_hora_inicio').val();
+             var endTime = form.find('#msh_clase_hora_fin').val();
+             if (startTime && endTime && endTime <= startTime) {
+                 validationMsgDiv.html(msh_admin_data.validation_end_after_start || 'Hora fin debe ser posterior a inicio.').show();
+                 submitButton.prop('disabled', false); spinner.removeClass('is-active'); return;
+             }
+             var saveNonce = form.find('#msh_save_clase_nonce').val();
+             if (!saveNonce) {
+                 validationMsgDiv.html('Error: Nonce Faltante.').show();
+                 submitButton.prop('disabled', false); spinner.removeClass('is-active'); return;
+             }
+
+             $.ajax({
+                 url: msh_admin_data.ajax_url, type: 'POST',
+                 data: form.serialize() + '&action=msh_save_clase' + '&security=' + saveNonce,
+                 success: function(response) {
+                     if (response.success) {
+                         closeClaseModal();
+                         var newRowHtml = response.data.new_row_html; var claseId = response.data.new_clase_id; var isUpdate = response.data.is_update;
+                         $('#msh-no-clases-row').remove();
+                         if (isUpdate) { $('#msh-clase-row-' + claseId).replaceWith(newRowHtml); }
+                         else { clasesTableBody.append(newRowHtml); }
+                         var alertMessage = response.data.message || 'Guardado.';
+                         if (response.data.warning) { var cleanWarning = $('<div>').html(response.data.warning).text(); alertMessage += '\n\nADVERTENCIA:\n' + cleanWarning; }
+                         alert(alertMessage);
+                     } else {
+                         validationMsgDiv.html(response.data.message || 'Error.').show();
+                         submitButton.prop('disabled', false);
                      }
-                } else {
-                    modalContent.html('<p style="color:red;">' + (response.data.message || 'Error desconocido.') + '</p>');
-                }
-            },
-            error: function() {
-                 modalContent.html('<p style="color:red;">' + (msh_admin_data.modal_error_loading || 'Error de conexión al cargar el formulario.') + '</p>');
-            }
-        });
-    });
+                 },
+                 error: function() { validationMsgDiv.html(msh_admin_data.modal_error_saving || 'Error.').show(); submitButton.prop('disabled', false); },
+                 complete: function() { spinner.removeClass('is-active'); }
+             });
+         });
+     }
 
-    // --- Cancelar/Cerrar Modal ---
-    // Escucha en el documento para elementos dentro del modal cargado dinámicamente
-    $(document).on('click', '#msh-clase-modal-container .msh-cancel-clase-btn', function(e) {
-        e.preventDefault();
-        closeClaseModal();
-    });
-
-    // --- Guardar Clase (Submit Modal) ---
-    $(document).on('submit', '#msh-clase-form', function(e) {
-        e.preventDefault();
-        var form = $(this);
-        // Mover reset aquí para que los mensajes no se borren si la validación JS falla
-        // resetModalMessages(); // Se llama al inicio de la función
-
-        var submitButton = form.find('#msh-save-clase-btn');
-        var spinner = form.find('.spinner');
-        var validationMsgDiv = form.find('#msh-clase-validation-messages');
-        var proximityWarningDiv = form.find('#msh-clase-proximity-warning');
-
-        // Limpiar mensajes previos específicos de este formulario
-        validationMsgDiv.html('').hide();
-        proximityWarningDiv.html('').hide();
-
-        submitButton.prop('disabled', true);
-        spinner.addClass('is-active');
-
-        // Validación JS básica hora fin > hora inicio
-        var startTime = form.find('#msh_clase_hora_inicio').val();
-        var endTime = form.find('#msh_clase_hora_fin').val();
-        if (startTime && endTime && endTime <= startTime) {
-            // Usar texto de msh_admin_data
-            var timeErrorMsg = msh_admin_data.validation_end_after_start || 'La hora de fin debe ser posterior a la hora de inicio.';
-            validationMsgDiv.html(timeErrorMsg).show();
-            submitButton.prop('disabled', false);
-            spinner.removeClass('is-active');
-            return;
-        }
-
-        // Obtener nonce específico para guardar
-        var saveNonce = form.find('#msh_save_clase_nonce').val();
-         if (!saveNonce) {
-             validationMsgDiv.html('Error: Nonce de guardado no encontrado.').show();
-            submitButton.prop('disabled', false);
-            spinner.removeClass('is-active');
-            return;
-        }
-
-
-        $.ajax({
-            url: msh_admin_data.ajax_url,
-            type: 'POST',
-            // Serializar formulario y añadir action y nonce de guardado
-            data: form.serialize() + '&action=msh_save_clase' + '&security=' + saveNonce,
-            success: function(response) {
-                if (response.success) {
-                    closeClaseModal();
-
-                    var newRowHtml = response.data.new_row_html;
-                    var claseId = response.data.new_clase_id;
-                    var isUpdate = response.data.is_update;
-
-                    $('#msh-no-clases-row').remove();
-
-                    if (isUpdate) {
-                        $('#msh-clase-row-' + claseId).replaceWith(newRowHtml);
-                    } else {
-                        clasesTableBody.append(newRowHtml);
-                    }
-
-                    // Usar un sistema de notificaciones de WP sería mejor, pero alert por simplicidad
-                    var alertMessage = response.data.message || 'Clase guardada.';
-                    if (response.data.warning) {
-                        // Limpiar HTML de la advertencia antes de mostrarla
-                        var cleanWarning = $('<div>').html(response.data.warning).text();
-                        alertMessage += '\n\nADVERTENCIA:\n' + cleanWarning;
-                    }
-                    alert(alertMessage);
-
-                } else {
-                    // Mostrar errores en el div de validación del modal
-                    validationMsgDiv.html(response.data.message || 'Error desconocido al guardar.').show();
-                    submitButton.prop('disabled', false); // Reactivar botón
-                }
-            },
-            error: function() {
-                // Usar texto de msh_admin_data
-                validationMsgDiv.html(msh_admin_data.modal_error_saving || 'Error de conexión al guardar. Inténtalo de nuevo.').show();
-                submitButton.prop('disabled', false);
-            },
-            complete: function() {
-                // Asegurarse que el spinner siempre se quite
-                spinner.removeClass('is-active');
-                // El botón se reactiva solo en caso de error
-            }
-        });
-    });
-
-    // --- Eliminar Clase ---
+    // --- Eliminar Clase (AJAX) ---
     maestroClasesContainer.on('click', '.msh-delete-clase', function(e) {
         e.preventDefault();
-        // Usar texto de confirmación de msh_admin_data
-        var confirmDeleteMsg = msh_admin_data.confirm_delete_clase || '¿Estás seguro de que quieres eliminar esta clase permanentemente?';
-        if (!confirm(confirmDeleteMsg)) {
-            return;
-        }
-
-        var button = $(this);
-        var claseId = button.data('clase-id');
-        // Usar nonce general para acciones
-        var nonce = msh_admin_data.manage_clases_nonce;
-        var row = $('#msh-clase-row-' + claseId);
-
-         if (!nonce) {
-            alert('Error: Nonce de seguridad no encontrado.');
-            return;
-        }
-
+        var confirmMsg = msh_admin_data.confirm_delete_clase || '¿Eliminar clase?';
+        if (!confirm(confirmMsg)) return;
+        var button = $(this); var claseId = button.data('clase-id');
+        var nonce = msh_admin_data.manage_clases_nonce; var row = $('#msh-clase-row-' + claseId);
+        if (!nonce) { alert('Error: Nonce Faltante.'); return; }
         button.prop('disabled', true);
-
         $.ajax({
-            url: msh_admin_data.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'msh_delete_clase',
-                clase_id: claseId,
-                security: nonce
-            },
+            url: msh_admin_data.ajax_url, type: 'POST',
+            data: { action: 'msh_delete_clase', clase_id: claseId, security: nonce },
             success: function(response) {
                 if (response.success) {
                     row.fadeOut(300, function() {
                         $(this).remove();
                         if (clasesTableBody.find('tr').length === 0) {
-                             // Usar texto de msh_admin_data
-                             var noClasesMsg = msh_admin_data.no_clases_msg || 'Este maestro no tiene clases programadas.';
+                            var noClasesMsg = msh_admin_data.no_clases_msg || 'No hay clases.';
                             clasesTableBody.append('<tr id="msh-no-clases-row"><td colspan="7">' + noClasesMsg + '</td></tr>');
                         }
                     });
-                    alert(response.data.message || 'Clase eliminada.');
-                } else {
-                    alert('Error: ' + (response.data.message || 'No se pudo eliminar la clase.'));
-                    button.prop('disabled', false);
-                }
+                    alert(response.data.message || 'Eliminado.');
+                } else { alert('Error: ' + (response.data.message || 'No se pudo eliminar.')); button.prop('disabled', false); }
             },
-            error: function() {
-                 // Usar texto de msh_admin_data
-                alert(msh_admin_data.modal_error_deleting || 'Error de conexión al eliminar.');
-                button.prop('disabled', false);
-            }
+            error: function() { alert(msh_admin_data.modal_error_deleting || 'Error.'); button.prop('disabled', false); }
         });
     });
 
-    // --- Filtrado Dinámico de Dropdowns en el Modal ---
-    // (Esta parte es compleja y depende de la estructura exacta de maestroAvailabilityData)
+    // --- Filtrado Dinámico Dropdowns Clases ---
     function initializeDynamicFiltering() {
-        var form = $('#msh-clase-form');
-        if (!form.length) return; // Salir si el formulario no existe
-
-        var diaSelect = form.find('#msh_clase_dia');
-        var horaInicioInput = form.find('#msh_clase_hora_inicio');
-        var horaFinInput = form.find('#msh_clase_hora_fin');
-
-        // Añadir listeners DENTRO del contexto del formulario modal
-        form.on('change', '#msh_clase_dia, #msh_clase_hora_inicio, #msh_clase_hora_fin', checkAvailabilityAndUpdateDropdowns);
+        var form = $('#msh-clase-form'); if (!form.length) return;
+        form.on('change', '#msh_clase_dia, #msh_clase_hora_inicio, #msh_clase_hora_fin', checkClassAvailabilityAndUpdateDropdowns);
     }
 
-    function checkAvailabilityAndUpdateDropdowns() {
-        var form = $(this).closest('form'); // Encontrar el formulario desde el elemento que cambió
-        if (!form.length) form = $('#msh-clase-form'); // Fallback si no se encuentra el form padre
-        if (!form.length) return; // Salir si aún no se encuentra
-
-        var diaSelect = form.find('#msh_clase_dia');
-        var horaInicioInput = form.find('#msh_clase_hora_inicio');
-        var horaFinInput = form.find('#msh_clase_hora_fin');
-        var sedeSelect = form.find('#msh_clase_sede_id');
-        var programaSelect = form.find('#msh_clase_programa_id');
-        var rangoSelect = form.find('#msh_clase_rango_id');
+    function checkClassAvailabilityAndUpdateDropdowns() {
+        var form = $(this).closest('form'); if (!form.length) form = $('#msh-clase-form'); if (!form.length) return;
+        var diaSelect = form.find('#msh_clase_dia'); var horaInicioInput = form.find('#msh_clase_hora_inicio');
+        var horaFinInput = form.find('#msh_clase_hora_fin'); var sedeSelect = form.find('#msh_clase_sede_id');
+        var programaSelect = form.find('#msh_clase_programa_id'); var rangoSelect = form.find('#msh_clase_rango_id');
         var hints = form.find('.msh-availability-hint');
+        var selectedDia = diaSelect.val(); var selectedHoraInicio = horaInicioInput.val(); var selectedHoraFin = horaFinInput.val();
+        var hintText = msh_admin_data.availability_hint_text || 'No disponible/admisible.';
 
-        var selectedDia = diaSelect.val();
-        var selectedHoraInicio = horaInicioInput.val();
-        var selectedHoraFin = horaFinInput.val();
-        var hintText = msh_admin_data.availability_hint_text || 'No disponible o no admisible para este horario/día.';
-
-        // Ocultar todos los hints y resetear estado 'admisible' inicial
         hints.hide();
-        sedeSelect.find('option').data('admisible', false);
-        programaSelect.find('option').data('admisible', false);
-        rangoSelect.find('option').data('admisible', false);
+        sedeSelect.find('option').data('admisible', false); programaSelect.find('option').data('admisible', false); rangoSelect.find('option').data('admisible', false);
 
-        // Resetear opciones si falta información clave
-        if (!selectedDia || !selectedHoraInicio || !selectedHoraFin || !maestroAvailabilityData) {
-            sedeSelect.find('option').prop('disabled', false).show();
-            programaSelect.find('option').prop('disabled', false).show();
-            rangoSelect.find('option').prop('disabled', false).show();
+        if (!selectedDia || !selectedHoraInicio || !selectedHoraFin || !clasesMaestroAvailabilityData || selectedHoraFin <= selectedHoraInicio) {
+            sedeSelect.find('option').prop('disabled', false).show(); programaSelect.find('option').prop('disabled', false).show(); rangoSelect.find('option').prop('disabled', false).show();
             return;
         }
 
-        // No filtrar si el rango horario es inválido
-        if (selectedHoraFin <= selectedHoraInicio) {
-             sedeSelect.find('option').prop('disabled', false).show();
-             programaSelect.find('option').prop('disabled', false).show();
-             rangoSelect.find('option').prop('disabled', false).show();
-            return;
-        }
+        var timeStart = selectedHoraInicio; var timeEnd = selectedHoraFin; var foundBlock = null;
+        var admissibleSedes = []; var admissibleProgramas = []; var admissibleRangos = [];
 
-        var timeStart = selectedHoraInicio;
-        var timeEnd = selectedHoraFin;
-        var foundBlock = null;
-        var admissibleSedes = [];
-        var admissibleProgramas = [];
-        var admissibleRangos = [];
-
-        // Iterar sobre la disponibilidad general del maestro
-         if (Array.isArray(maestroAvailabilityData)) {
-             for (var i = 0; i < maestroAvailabilityData.length; i++) {
-                 var block = maestroAvailabilityData[i];
-                 // Asegurarse que las propiedades existan
-                 if (block && block.dia === selectedDia && block.hora_inicio && block.hora_fin &&
-                     timeStart >= block.hora_inicio &&
-                     timeEnd <= block.hora_fin)
-                 {
-                     foundBlock = block;
-                     // Asegurarse que las propiedades de arrays existan
-                     admissibleSedes = Array.isArray(block.sedes) ? block.sedes : [];
-                     admissibleProgramas = Array.isArray(block.programas) ? block.programas : [];
-                     admissibleRangos = Array.isArray(block.rangos) ? block.rangos : [];
-                     break;
-                 }
-             }
-         }
-
-
-        // Función auxiliar para actualizar un select
-        function updateSelectOptions(selectElement, admissibleIds) {
-            if (!selectElement.length) return; // Salir si el select no existe
-
-            var currentSelection = selectElement.val();
-            var firstOption = selectElement.find('option:first'); // Guardar la opción "-- Seleccionar --"
-
-            // Habilitar y mostrar todas las opciones temporalmente (excepto la primera)
-            selectElement.find('option:not(:first-child)').prop('disabled', false).show();
-
-            // Filtrar: deshabilitar y ocultar no admisibles
-            selectElement.find('option:not(:first-child)').each(function() {
-                var option = $(this);
-                var optionId = parseInt(option.val(), 10);
-                 // Convertir IDs admisibles a números para comparación segura
-                 var isAdmissible = admissibleIds.map(Number).includes(optionId);
-
-                option.data('admisible', isAdmissible); // Guardar estado
-                if (!isAdmissible) {
-                    option.prop('disabled', true).hide();
+        if (Array.isArray(clasesMaestroAvailabilityData)) {
+            for (var i = 0; i < clasesMaestroAvailabilityData.length; i++) {
+                var block = clasesMaestroAvailabilityData[i];
+                if (block && block.dia === selectedDia && block.hora_inicio && block.hora_fin && timeStart >= block.hora_inicio && timeEnd <= block.hora_fin) {
+                    foundBlock = block;
+                    admissibleSedes = Array.isArray(block.sedes) ? block.sedes : [];
+                    admissibleProgramas = Array.isArray(block.programas) ? block.programas : [];
+                    admissibleRangos = Array.isArray(block.rangos) ? block.rangos : [];
+                    break;
                 }
-            });
-
-             // Re-evaluar la selección actual: Si la opción seleccionada ahora está oculta/deshabilitada, resetear
-             var selectedOption = selectElement.find('option[value="' + currentSelection + '"]');
-             if (currentSelection !== "" && selectedOption.prop('disabled')) {
-                 selectElement.val(""); // Resetear a '-- Seleccionar --'
-             }
-
-             // Mostrar hint si no se encontró bloque o si la selección fue reseteada
-             var hint = selectElement.closest('td').find('.msh-availability-hint');
-             if (!foundBlock) {
-                 selectElement.find('option:not(:first-child)').prop('disabled', true).hide(); // Deshabilitar todo si no hay bloque
-                 selectElement.val("");
-                 hint.html(hintText).show();
-             } else if (selectElement.val() === "" && currentSelection !== "") {
-                  // Si se reseteó la selección porque no era válida
-                   hint.html(hintText).show();
-             }
-              else {
-                 hint.hide();
-             }
+            }
         }
 
-        // Actualizar los selects
-        updateSelectOptions(sedeSelect, admissibleSedes);
-        updateSelectOptions(programaSelect, admissibleProgramas);
-        updateSelectOptions(rangoSelect, admissibleRangos);
+        updateClassSelectOptions(sedeSelect, admissibleSedes, foundBlock, hintText);
+        updateClassSelectOptions(programaSelect, admissibleProgramas, foundBlock, hintText);
+        updateClassSelectOptions(rangoSelect, admissibleRangos, foundBlock, hintText);
+    }
 
-    } // Fin de checkAvailabilityAndUpdateDropdowns
+    function updateClassSelectOptions(selectElement, admissibleIds, foundBlock, hintText) {
+        if (!selectElement.length) return;
+        var currentSelection = selectElement.val();
+        selectElement.find('option:not(:first-child)').prop('disabled', false).show();
+
+        selectElement.find('option:not(:first-child)').each(function() {
+            var option = $(this); var optionId = parseInt(option.val(), 10);
+            var isAdmissible = admissibleIds.map(Number).includes(optionId);
+            option.data('admisible', isAdmissible);
+            if (!isAdmissible) { option.prop('disabled', true).hide(); }
+        });
+
+        var selectedOption = selectElement.find('option[value="' + currentSelection + '"]');
+        if (currentSelection !== "" && selectedOption.prop('disabled')) { selectElement.val(""); }
+
+        var hint = selectElement.closest('td').find('.msh-availability-hint');
+        if (!foundBlock) {
+            selectElement.find('option:not(:first-child)').prop('disabled', true).hide(); selectElement.val(""); hint.html(hintText).show();
+        } else if (selectElement.val() === "" && currentSelection !== "") { hint.html(hintText).show(); }
+        else { hint.hide(); }
+    }
+
 
 }); // Fin del jQuery(document).ready()
