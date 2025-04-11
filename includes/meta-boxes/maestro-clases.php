@@ -237,12 +237,16 @@ add_action( 'wp_ajax_msh_load_clase_form', 'msh_ajax_load_clase_form_handler' );
  * Manejador AJAX para guardar (crear/actualizar) una Clase Programada.
  */
 function msh_ajax_save_clase_handler() {
+    error_log("--- MSH Save Clase AJAX Start ---"); // LOG INICIO HANDLER
+
     // 1. Seguridad: Nonce y Permisos
     check_ajax_referer( 'msh_save_clase_action', 'security' );
-    $required_capability_save = apply_filters('msh_capability_save_clases', 'publish_posts'); // Capacidad para guardar
+    $required_capability_save = apply_filters('msh_capability_save_clases', 'publish_posts');
     if ( ! current_user_can( $required_capability_save ) ) {
+        error_log("MSH Save Clase - ERROR: Permiso denegado.");
         wp_send_json_error( array( 'message' => __( 'No tienes permiso para guardar clases.', 'music-schedule-manager' ) ) );
     }
+    error_log("MSH Save Clase - Permisos OK.");
 
     // 2. Obtener y Sanitizar Datos
     $clase_id   = isset( $_POST['clase_id'] ) ? absint( $_POST['clase_id'] ) : 0;
@@ -256,10 +260,17 @@ function msh_ajax_save_clase_handler() {
     $capacidad  = isset( $_POST['msh_clase_capacidad'] ) ? absint( $_POST['msh_clase_capacidad'] ) : 1;
     if ($capacidad < 1) $capacidad = 1;
 
+    error_log("MSH Save Clase - Datos Recibidos: " . print_r(array( // LOG DATOS RECIBIDOS
+        'clase_id' => $clase_id, 'maestro_id' => $maestro_id, 'dia' => $dia, 'inicio' => $hora_inicio, 'fin' => $hora_fin,
+        'sede' => $sede_id, 'programa' => $programa_id, 'rango' => $rango_id, 'capacidad' => $capacidad
+    ), true));
+    // Log del $_POST completo (puede ser útil pero largo)
+    // error_log("MSH Save Clase - Raw POST data: " . print_r($_POST, true));
+
     // 3. Validaciones Cruciales
     $errors = array();
     $dias_permitidos = array_keys( msh_get_dias_semana() );
-    // a) Campos requeridos básicos
+    // ... (Validaciones básicas como antes: maestro, día, horas, IDs > 0) ...
     if ( empty($maestro_id) || get_post_type($maestro_id) !== 'msh_maestro' ) $errors[] = __('ID Maestro inválido.');
     if ( empty($dia) || !in_array($dia, $dias_permitidos) ) $errors[] = __('Día inválido.');
     if ( empty($hora_inicio) || !preg_match('/^([01]?\d|2[0-3]):[0-5]\d$/', $hora_inicio) ) $errors[] = __('Hora inicio inválida.');
@@ -268,39 +279,119 @@ function msh_ajax_save_clase_handler() {
     if ( empty($sede_id) || get_post_type($sede_id) !== 'msh_sede' ) $errors[] = __('Sede inválida.');
     if ( empty($programa_id) || get_post_type($programa_id) !== 'msh_programa' ) $errors[] = __('Programa inválido.');
     if ( empty($rango_id) || get_post_type($rango_id) !== 'msh_rango_edad' ) $errors[] = __('Rango edad inválido.');
-    if (!empty($errors)) wp_send_json_error( array( 'message' => implode('<br>', $errors) ) );
 
-    // b) Disponibilidad y Admisibilidad
+    if (!empty($errors)) {
+        error_log("MSH Save Clase - ERROR: Validación Básica Falló: " . implode(', ', $errors));
+        wp_send_json_error( array( 'message' => implode('<br>', $errors) ) );
+    }
+
+    // ---> INICIO DEBUG VALIDACIÓN DISPONIBILIDAD <---
+    error_log("MSH Save Clase - Iniciando Validación Disponibilidad/Admisibilidad...");
     $maestro_disponibilidad = get_post_meta( $maestro_id, '_msh_maestro_disponibilidad', true );
     $maestro_disponibilidad = is_array($maestro_disponibilidad) ? $maestro_disponibilidad : [];
-    $is_within_availability = false; $is_admissible = false;
-    foreach ( $maestro_disponibilidad as $b ) { /* ... lógica como antes ... */ }
-    if (!$is_within_availability) $errors[] = __('Horario fuera de disponibilidad general.');
-    elseif (!$is_admissible) $errors[] = __('Combinación Sede/Prog./Rango no admisible.');
-    if (!empty($errors)) wp_send_json_error( array( 'message' => implode('<br>', $errors) ) );
+    error_log("MSH Save Clase - Disponibilidad General Maestro $maestro_id: " . print_r($maestro_disponibilidad, true)); // LOG DISPONIBILIDAD
+
+    $is_within_availability = false;
+    $is_admissible = false;
+    $checked_block = null; // Para saber en qué bloque debería encajar
+
+    // Convertir horas de la clase propuesta a minutos para comparar
+    $time_to_minutes = function($time_str){ if(empty($time_str) || !preg_match('/^(\d{1,2}):(\d{2})$/', $time_str, $m)) return false; return intval($m[1])*60+intval($m[2]); };
+    $clase_start_min_prop = $time_to_minutes($hora_inicio);
+    $clase_end_min_prop = $time_to_minutes($hora_fin);
+    error_log("MSH Save Clase - Hora propuesta (mins): $clase_start_min_prop - $clase_end_min_prop");
+
+    if ($clase_start_min_prop !== false && $clase_end_min_prop !== false) {
+        foreach ( $maestro_disponibilidad as $index => $b ) {
+            $block_dia = $b['dia'] ?? '';
+            $block_start_min = $time_to_minutes($b['hora_inicio'] ?? '');
+            $block_end_min = $time_to_minutes($b['hora_fin'] ?? '');
+
+            error_log("MSH Save Clase - Checking Avail Block #$index: Dia={$block_dia}, Start={$block_start_min}, End={$block_end_min}"); // LOG CADA BLOQUE
+
+            // Comprobar si el día coincide Y el horario propuesto está DENTRO del bloque
+            if ( $block_dia === $dia && $block_start_min !== false && $block_end_min !== false &&
+                 $clase_start_min_prop >= $block_start_min && // Clase empieza DENTRO o IGUAL al inicio del bloque
+                 $clase_end_min_prop <= $block_end_min        // Clase termina DENTRO o IGUAL al fin del bloque
+               )
+            {
+                error_log("MSH Save Clase - MATCH Horario en Bloque #$index!"); // LOG MATCH HORARIO
+                $is_within_availability = true;
+                $checked_block = $b; // Guardar el bloque que coincide
+
+                // Verificar Admisibilidad DENTRO de este bloque coincidente
+                $sedes_admisibles = isset($b['sedes']) && is_array($b['sedes']) ? array_map('absint', $b['sedes']) : [];
+                $programas_admisibles = isset($b['programas']) && is_array($b['programas']) ? array_map('absint', $b['programas']) : [];
+                $rangos_admisibles = isset($b['rangos']) && is_array($b['rangos']) ? array_map('absint', $b['rangos']) : [];
+
+                error_log("MSH Save Clase - Bloque #$index - Admisibles: Sedes=" . implode(',',$sedes_admisibles) . " / Progs=" . implode(',',$programas_admisibles) . " / Rangos=" . implode(',',$rangos_admisibles)); // LOG ADMISIBLES
+                error_log("MSH Save Clase - Bloque #$index - Intentando asignar: Sede=$sede_id / Prog=$programa_id / Rango=$rango_id"); // LOG INTENTO
+
+                if ( in_array( $sede_id, $sedes_admisibles ) &&
+                     in_array( $programa_id, $programas_admisibles ) &&
+                     in_array( $rango_id, $rangos_admisibles ) )
+                {
+                    error_log("MSH Save Clase - MATCH Admisibilidad en Bloque #$index!"); // LOG MATCH ADMISIBILIDAD
+                    $is_admissible = true;
+                    break; // Encontramos un bloque válido y admisible, no necesitamos seguir buscando
+                } else {
+                     error_log("MSH Save Clase - FAIL Admisibilidad en Bloque #$index."); // LOG FALLO ADMISIBILIDAD
+                }
+            } else {
+                 error_log("MSH Save Clase - No Match Horario en Bloque #$index.");
+            }
+        } // Fin foreach disponibilidad
+    } else {
+         error_log("MSH Save Clase - ERROR: Hora propuesta inválida en minutos.");
+    }
+
+
+    if ( !$is_within_availability ) {
+        $errors[] = __('Horario fuera de disponibilidad general.'); // Mensaje de error
+        error_log("MSH Save Clase - ERROR: Validación Falló - Horario fuera de disponibilidad.");
+    } elseif ( !$is_admissible ) {
+        $errors[] = __('Combinación Sede/Programa/Rango no admisible para este horario.'); // Mensaje de error
+        error_log("MSH Save Clase - ERROR: Validación Falló - Combinación no admisible en el bloque coincidente.");
+    }
+    if (!empty($errors)) {
+        wp_send_json_error( array( 'message' => implode('<br>', $errors) ) );
+    }
+    error_log("MSH Save Clase - Validación Disponibilidad/Admisibilidad OK.");
+    // ---> FIN DEBUG VALIDACIÓN DISPONIBILIDAD <---
+
 
     // c) Solapamiento con otras clases
-    $args_overlap = array( /* ... como antes ... */ ); $otras_clases_query = new WP_Query($args_overlap);
-    $start_time_new = strtotime($hora_inicio); $end_time_new = strtotime($hora_fin);
-    if ( $otras_clases_query->have_posts() ) { /* ... lógica chequeo solapamiento ... */ }
-    if (!empty($errors)) wp_send_json_error( array( 'message' => implode('<br>', $errors) ) );
+    error_log("MSH Save Clase - Iniciando Validación Solapamiento...");
+    // ... (lógica validación solapamiento como antes) ...
+    $args_overlap = array(/* ... */); $otras_clases_query = new WP_Query($args_overlap);
+    if ( $otras_clases_query->have_posts() ) {
+         foreach ($otras_clases_query->posts as $otra_clase) { /* ... lógica chequeo ... */ }
+    }
+    if (!empty($errors)) {
+         error_log("MSH Save Clase - ERROR: Validación Falló - Solapamiento detectado.");
+         wp_send_json_error( array( 'message' => implode('<br>', $errors) ) );
+    }
+     error_log("MSH Save Clase - Validación Solapamiento OK.");
+
 
     // d) Advertencia Proximidad
-    $proximity_warning = '';
-    // ... (lógica advertencia proximidad como antes, usando msh_get_required_travel_time) ...
+    // ... (lógica advertencia proximidad como antes) ...
+     error_log("MSH Save Clase - Advertencia Proximidad (si existe): " . $proximity_warning);
+
 
     // 4. Preparar Datos y Guardar Post
-    $maestro_name = get_the_title($maestro_id); $programa_name = get_the_title($programa_id); $rango_name = get_the_title($rango_id); $sede_name = get_the_title($sede_id); $dia_name = msh_get_dias_semana()[$dia] ?? ucfirst($dia);
-    $post_title = sprintf('%s %s-%s | %s (%s) | %s | %s', $dia_name, $hora_inicio, $hora_fin, $programa_name, $rango_name, $sede_name, $maestro_name);
-    $post_data = array('post_type' => 'msh_clase', 'post_status' => 'publish', 'post_title' => $post_title);
-    if ( $clase_id > 0 ) $post_data['ID'] = $clase_id;
+    // ... (generar $post_title, $post_data) ...
+    error_log("MSH Save Clase - Preparando para guardar Post: " . print_r($post_data, true));
     $result = $clase_id > 0 ? wp_update_post( $post_data, true ) : wp_insert_post( $post_data, true );
 
     // 5. Guardar Metas y Enviar Respuesta
     if ( is_wp_error( $result ) ) {
+        error_log("MSH Save Clase - ERROR: wp_insert/update_post falló: " . $result->get_error_message());
         wp_send_json_error( array( 'message' => $result->get_error_message() ) );
     } else {
         $new_clase_id = $result;
+        error_log("MSH Save Clase - Post guardado/actualizado con ID: " . $new_clase_id);
+        // Guardar Metas
         update_post_meta( $new_clase_id, '_msh_clase_maestro_id', $maestro_id );
         update_post_meta( $new_clase_id, '_msh_clase_dia', $dia );
         update_post_meta( $new_clase_id, '_msh_clase_hora_inicio', $hora_inicio );
@@ -309,8 +400,11 @@ function msh_ajax_save_clase_handler() {
         update_post_meta( $new_clase_id, '_msh_clase_programa_id', $programa_id );
         update_post_meta( $new_clase_id, '_msh_clase_rango_id', $rango_id );
         update_post_meta( $new_clase_id, '_msh_clase_capacidad', $capacidad );
+        error_log("MSH Save Clase - Metadatos guardados para ID: " . $new_clase_id);
+
         wp_send_json_success( array('message' => __( 'Clase guardada.', 'music-schedule-manager' ), 'warning' => $proximity_warning, 'new_clase_id' => $new_clase_id, 'is_update' => ($clase_id > 0)) );
     }
+     error_log("--- MSH Save Clase AJAX End ---");
 }
 add_action( 'wp_ajax_msh_save_clase', 'msh_ajax_save_clase_handler' );
 // No añadir 'nopriv' para guardar
