@@ -14,16 +14,37 @@ function msh_enqueue_admin_assets( $hook_suffix ) {
         wp_enqueue_script('thickbox');
         wp_enqueue_style('thickbox');
 
-        // Obtener datos de disponibilidad inicial SOLO si estamos editando un post existente
+        // --- Obtener datos iniciales y mapas de nombres ---
         $initial_availability_data = array();
-        if ( $post && isset($post->ID) && $hook_suffix === 'post.php' ) {
-             $initial_availability_data = get_post_meta( $post->ID, '_msh_maestro_disponibilidad', true );
-             if ( !is_array( $initial_availability_data ) ) {
-                 $initial_availability_data = array();
+        $current_post_id = 0;
+        if ( $post && isset($post->ID) ) {
+             $current_post_id = $post->ID;
+             if ($hook_suffix === 'post.php') { // Solo cargar datos si estamos editando
+                 $initial_availability_data = get_post_meta( $current_post_id, '_msh_maestro_disponibilidad', true );
+                 if ( !is_array( $initial_availability_data ) ) {
+                     $initial_availability_data = array();
+                 }
+                 if (function_exists('msh_sort_availability_callback')) {
+                    usort($initial_availability_data, 'msh_sort_availability_callback');
+                 }
              }
-             // Ordenar los datos iniciales
-             usort($initial_availability_data, 'msh_sort_availability_callback');
         }
+
+        // --- Crear Mapas ID -> Título (MÉTODO MÁS SEGURO) ---
+        $sede_map = array();
+        $programa_map = array();
+        $rango_map = array();
+
+        // Obtener objetos de post completos
+        $sede_posts = get_posts( array( 'post_type' => 'msh_sede', 'numberposts' => -1, 'post_status' => 'publish' ) );
+        if ($sede_posts) { foreach ($sede_posts as $p) { if (isset($p->ID) && isset($p->post_title)) $sede_map[$p->ID] = $p->post_title; } }
+
+        $programa_posts = get_posts( array( 'post_type' => 'msh_programa', 'numberposts' => -1, 'post_status' => 'publish' ) );
+        if ($programa_posts) { foreach ($programa_posts as $p) { if (isset($p->ID) && isset($p->post_title)) $programa_map[$p->ID] = $p->post_title; } }
+
+        $rango_posts = get_posts( array( 'post_type' => 'msh_rango_edad', 'numberposts' => -1, 'post_status' => 'publish' ) );
+        if ($rango_posts) { foreach ($rango_posts as $p) { if (isset($p->ID) && isset($p->post_title)) $rango_map[$p->ID] = $p->post_title; } }
+        // --- Fin Mapas ---
 
 
         // Pasar datos de PHP a JS
@@ -39,6 +60,14 @@ function msh_enqueue_admin_assets( $hook_suffix ) {
 
             // --- Textos Disponibilidad General (MODAL) ---
             'availability_initial_data' => $initial_availability_data, // <<< DATOS INICIALES
+
+            // *** NUEVOS MAPAS DE NOMBRES ***
+            'sede_names' => $sede_map,
+            'programa_names' => $programa_map,
+            'rango_names' => $rango_map,
+             // *** FIN NUEVOS MAPAS ***
+
+             // --- Textos Disponibilidad ---
             'text_confirm_delete_availability' => __( '¿Estás seguro de que quieres eliminar este bloque de disponibilidad? (Se guardará al hacer clic en "Guardar Cambios")', 'music-schedule-manager' ),
             'text_no_availability_blocks' => __( 'No se han definido bloques de disponibilidad.', 'music-schedule-manager' ),
             'text_loading_availability_form' => __( 'Cargando formulario de disponibilidad...', 'music-schedule-manager' ),
