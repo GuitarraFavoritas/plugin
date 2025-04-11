@@ -53,4 +53,21 @@ function msh_load_textdomain() {
     load_plugin_textdomain( 'music-schedule-manager', false, dirname( plugin_basename( __FILE__ ) ) . '/languages/' );
 }
 add_action( 'plugins_loaded', 'msh_load_textdomain' );
+
+
+// OCULTAR MENUS A ROL EDITOR
+function ocultar_menus_para_editores() {
+    if (current_user_can('editor')) {
+        remove_menu_page('index.php');          // Escritorio
+        remove_menu_page('edit.php');           // Entradas
+        remove_menu_page('upload.php');         // Medios
+        remove_menu_page('edit.php?post_type=page'); // Páginas
+        remove_menu_page('edit-comments.php');  // Comentarios
+        // remove_menu_page('profile.php');        // Perfil
+        remove_menu_page('tools.php');          // Herramientas
+    }
+}
+add_action('admin_menu', 'ocultar_menus_para_editores');
+
+
 ?>

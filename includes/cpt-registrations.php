@@ -124,7 +124,7 @@ function msh_registrar_todos_cpts() {
 	register_post_type( 'msh_rango_edad', $args_rdedades ); // Usamos 'msh_rango_de_edad' como slug interno con prefijo
 
 	//CPT para Horarios Programadas 
-	$labels_rdedades = array(
+	$labels_asignados = array(
 		'name' => 'Asignados',
 		'add_new_item' => 'Asignar',
 		'edit_item' => 'Editar Asignado',
@@ -132,15 +132,15 @@ function msh_registrar_todos_cpts() {
 		'singular_name' => 'Asignado'
 	);
 
-	$args_rdedades = array(
-		'labels'             => $labels_rdedades,
+	$args_asignados = array(
+		'labels'             => $labels_asignados,
 		'public'             => false, // Hace el CPT visible en el frontend y admin
 		'publicly_queryable' => true, // Permite consultas desde el frontend
 		'show_ui'            => true, // Muestra la interfaz de usuario en el admin
 		'show_in_menu'       => false, // Muestra en el menú de administración
 		'query_var'          => true, // Permite usar '?clase_programada=nombre-clase_programada' en URLs
 		'rewrite'            => array( 'slug' => 'horario_asignado' ), // URL amigable (ej. tusitio.com/clases_programadas/nombre-clase_programada)
-		'capability_type'    => 'post', // Tipo de permisos (como las Entradas normales)
+		'capability_type'    => 'msh_clase', // Tipo de permisos (como las Entradas normales)
 		'has_archive'        => 'horario_asignado', // Activa una página de archivo en tusitio.com/clases_programadas/
 		'hierarchical'       => false, // No es jerárquico (como las Páginas)
 		'menu_position'      => 5, // Posición en el menú del admin (5 es debajo de Entradas)
@@ -149,9 +149,63 @@ function msh_registrar_todos_cpts() {
 		'show_in_rest'       => true, // Habilita el soporte para el editor de bloques (Gutenberg) y la API REST
 	);
 
-	register_post_type( 'msh_clase', $args_rdedades ); // Usamos 'msh_clase' como slug interno con prefijo
+	register_post_type( 'msh_clase', $args_asignados ); // Usamos 'msh_clase' como slug interno con prefijo
 
 }
 add_action( 'init', 'msh_registrar_todos_cpts' );
+
+function crear_rol_personalizado() {
+    add_role('cpt_editor', 'EH', [
+        'read' => true,
+        'edit_posts' => true, // Bloquear posts normales
+        'delete_posts' => false,
+        'publish_posts' => false,
+    ]);
+}
+add_action('init', 'crear_rol_personalizado');
+
+function asignar_permisos_a_rol() {
+    $rol = get_role('cpt_editor');
+
+    if ($rol) {
+        // Lista de CPTs permitidos (ajusta según tu caso)
+        $cpts = ['msh_clase', 'msh_rango_edad', 'msh_sede', 'msh_programa', 'msh_maestro']; 
+
+        foreach ($cpts as $cpt) {
+            $rol->add_cap("edit_{$cpt}");
+            $rol->add_cap("edit_others_{$cpt}");
+            $rol->add_cap("publish_{$cpt}");
+            $rol->add_cap("delete_{$cpt}");
+            $rol->add_cap("read_private_{$cpt}");
+        }
+    }
+}
+add_action('init', 'asignar_permisos_a_rol');
+
+// 🚫 Ocultar elementos del menú para el rol "cpt_editor"
+function ocultar_menus_para_cpt_editor() {
+    if (current_user_can('cpt_editor')) {
+        remove_menu_page('index.php'); // Escritorio
+        remove_menu_page('upload.php'); // Medios
+        remove_menu_page('profile.php'); // Perfil
+    }
+}
+add_action('admin_menu', 'ocultar_menus_para_cpt_editor');
+
+// 🚫 Redirigir si intentan acceder manualmente a páginas bloqueadas
+function bloquear_acceso_directo() {
+    if (current_user_can('cpt_editor')) {
+        $bloqueados = ['index.php', 'upload.php', 'profile.php'];
+        global $pagenow;
+
+        if (in_array($pagenow, $bloqueados)) {
+            wp_redirect(admin_url('edit.php?post_type=cpt1')); // Redirigir a un CPT permitido
+            exit;
+        }
+    }
+}
+add_action('admin_init', 'bloquear_acceso_directo');
+
+
 
 ?>

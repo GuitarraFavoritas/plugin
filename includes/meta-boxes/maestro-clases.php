@@ -150,11 +150,18 @@ function msh_ajax_load_clase_form_handler() {
 
     // *** VERIFICAR LOGIN ***
     if ( ! is_user_logged_in() ) {
-        error_log("MSH AJAX Load Form - User not logged in. Sending login_required error."); // LOG
+        error_log("MSH AJAX Load Form - User not logged in.");
+        // *** Obtener URL de la página frontend desde el referer ***
+        $redirect_url = wp_get_referer(); // Obtener la página anterior
+        // Si no hay referer o es el propio admin-ajax, redirigir a la home
+        if (!$redirect_url || strpos($redirect_url, 'wp-admin/admin-ajax.php') !== false) {
+            $redirect_url = home_url('/');
+        }
+        // *** Fin Obtener URL ***
         wp_send_json_error( array(
             'message' => __( 'Debes iniciar sesión para realizar esta acción.', 'music-schedule-manager' ),
-            'login_required' => true, // Flag para JS
-            'login_url' => wp_login_url( $_SERVER['REQUEST_URI'] ?? get_permalink() ) // URL de login
+            'login_required' => true,
+            'login_url' => wp_login_url( $redirect_url ) // Usar la URL obtenida
         ) );
         wp_die(); // Terminar ejecución explícitamente
     }
@@ -254,7 +261,14 @@ add_action( 'wp_ajax_nopriv_msh_load_clase_form', 'msh_ajax_load_clase_form_hand
  */
 function msh_ajax_save_clase_handler() {
     error_log("--- MSH Save Clase AJAX Start ---"); // LOG INICIO HANDLER
-
+    check_ajax_referer( 'msh_save_clase_action', 'security' );
+    if ( ! is_user_logged_in() ) {
+         error_log("MSH AJAX Save Clase - User not logged in.");
+         $redirect_url = wp_get_referer() ?: home_url('/'); // Abreviado
+         if (strpos($redirect_url, 'wp-admin/admin-ajax.php') !== false) $redirect_url = home_url('/');
+         wp_send_json_error( array( /* ... message, login_required, login_url => wp_login_url($redirect_url) ... */ ) );
+         wp_die();
+    }
     // 1. Seguridad: Nonce y Permisos
     check_ajax_referer( 'msh_save_clase_action', 'security' );
     $required_capability_save = apply_filters('msh_capability_save_clases', 'publish_posts');
@@ -530,6 +544,13 @@ add_action( 'wp_ajax_msh_save_clase', 'msh_ajax_save_clase_handler' );
  */
 function msh_ajax_delete_clase_handler() {
      check_ajax_referer( 'msh_manage_clases_action', 'security' );
+     if ( ! is_user_logged_in() ) {
+        error_log("MSH AJAX Delete Clase - User not logged in.");
+        $redirect_url = wp_get_referer() ?: home_url('/');
+         if (strpos($redirect_url, 'wp-admin/admin-ajax.php') !== false) $redirect_url = home_url('/');
+        wp_send_json_error( array( /* ... message, login_required, login_url => wp_login_url($redirect_url) ... */ ) );
+        wp_die();
+    }
      $required_capability_delete = apply_filters('msh_capability_delete_clases', 'delete_posts');
      if ( ! current_user_can( $required_capability_delete ) ) {
          wp_send_json_error( array( 'message' => __( 'No tienes permiso para eliminar.', 'music-schedule-manager' ) ) );
