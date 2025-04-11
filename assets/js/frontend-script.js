@@ -133,14 +133,18 @@ jQuery(document).ready(function($) {
         var button = $(this); var claseId = button.data('clase-id'); var maestroId = button.data('maestro-id');
         var nonce = msh_frontend_data.manage_clases_nonce;
         if (!maestroId || !claseId || !nonce) { alert('Error: Datos/Nonce faltantes.'); return; }
+
+
+        // Abrir modal ANTES de la llamada AJAX para mostrar 'Cargando...'
         openFrontendModal('msh-frontend-clase-modal-container', 'msh-frontend-clase-modal-content', msh_frontend_data.modal_title_manage_clase || 'Editar Clase');
+
+
         $.ajax({
             url: msh_frontend_data.ajax_url, type: 'POST',
             data: { action: 'msh_load_clase_form', maestro_id: maestroId, clase_id: claseId, security: nonce },
             success: function(response) {
                 if (response.success) {
-
-
+                    
                     // *** Añadir nonce al HTML antes de mostrarlo ***
                     var formHtmlWithNonce = response.data.html;
                     // Buscar la etiqueta de cierre </form> e insertar el nonce antes

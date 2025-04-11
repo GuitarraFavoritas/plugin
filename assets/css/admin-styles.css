@@ -1,7 +1,9 @@
 /* assets/css/admin-styles.css */
+
 #msh-disponibilidad-container {
     margin-top: 15px;
   }
+  
   .msh-bloque-row {
     display: flex; /* Activa Flexbox */
     flex-wrap: wrap; /* Permite que los elementos pasen a la siguiente línea si no caben */
@@ -14,6 +16,7 @@
     position: relative;
     border-radius: 4px;
   }
+  
   /* Estilos para el handle de arrastre (opcional) */
   .msh-drag-handle {
     cursor: move;
@@ -21,19 +24,23 @@
     margin-right: 5px; /* Pequeño espacio a la derecha del handle */
     align-self: center; /* Centrar verticalmente el handle */
   }
+  
   .msh-bloque-row label {
     display: block;
     margin-bottom: 4px;
     font-weight: bold;
     font-size: 12px;
   }
+  
   .msh-bloque-field-group {
     margin-bottom: 5px; /* Espacio inferior reducido en modo flex */
   }
+  
   /* Anchos específicos para mejor alineación en una línea */
   .msh-field-dia select { min-width: 130px; }
   .msh-field-hora-inicio input[type="time"],
   .msh-field-hora-fin input[type="time"] { width: 100px; }
+  
   /* Los selectores múltiples pueden ocupar más espacio */
   .msh-field-sedes select[multiple],
   .msh-field-programas select[multiple],
@@ -43,6 +50,7 @@
     height: 80px; /* Altura reducida para layout en línea */
     flex-grow: 1; /* Permite que crezcan si hay espacio */
   }
+  
   .msh-remove-bloque {
     color: #dc3545; /* Rojo bootstrap */
     text-decoration: none;
@@ -55,9 +63,11 @@
       font-size: 18px;
       vertical-align: middle;
   }
+  
   .msh-remove-bloque:hover {
     color: #a00;
   }
+  
   #msh-add-bloque {
       margin-top: 10px;
   }
@@ -65,6 +75,7 @@
       vertical-align: text-bottom;
       margin-right: 3px;
   }
+  
   #msh-no-bloques {
     color: #6c757d; /* Gris bootstrap */
     font-style: italic;
@@ -73,6 +84,7 @@
     text-align: center;
     margin-bottom: 10px;
   }
+  
   /* Estilos para cuando se está arrastrando (si usas sortable) */
   .msh-sortable .ui-sortable-placeholder {
       border: 1px dashed #ccc;
@@ -85,19 +97,18 @@
       background: #fff;
       box-shadow: 0 2px 5px rgba(0,0,0,0.1);
   }
-  
-  /* assets/css/admin-styles.css */
-/* ... (Estilos anteriores para la disponibilidad repetible) ... */
 
-/* ============================================ */
+  /* ============================================ */
 /* = Estilos para Meta Box Clases Programadas = */
 /* ============================================ */
+
 .msh-clases-table-wrapper {
   max-height: 400px; /* Altura máxima para la tabla antes de scroll */
   overflow-y: auto;
   margin-bottom: 15px;
   border: 1px solid #ccd0d4;
 }
+
 /* Ajustar botones de acción en la tabla */
 .msh-clases-container .wp-list-table td .button {
   margin-right: 5px;
@@ -113,6 +124,7 @@
 .msh-clases-container .wp-list-table td .button-link-delete:hover {
   color: #a00;
 }
+
 /* Estilos para el Modal (ThickBox lo envuelve) */
 #msh-clase-modal-container {
   background: #fff;
@@ -120,6 +132,7 @@
   max-height: 90vh; /* Evitar que sea demasiado alto */
   overflow-y: auto;
 }
+
 #msh-clase-modal-container h2 {
   margin-top: 0;
   margin-bottom: 20px;
@@ -127,6 +140,7 @@
   border-bottom: 1px solid #eee;
   padding-bottom: 10px;
 }
+
 #msh-clase-form .form-table th {
   width: 150px; /* Ancho fijo para etiquetas */
   padding-right: 20px;
@@ -145,6 +159,7 @@
   min-width: 80px;
 }
 
+
 #msh-clase-form .spinner {
   float: none;
   vertical-align: middle;
@@ -154,12 +169,14 @@
 #msh-clase-form .spinner.is-active {
   visibility: visible;
 }
+
 /* Ocultar opciones deshabilitadas en el select */
 #msh-clase-form select option:disabled {
  /* display: none; // A veces display:none no funciona bien en todos los navegadores para options */
  /* Alternativa: hacerlas grises */
  color: #ccc;
 }
+
 /* Estilos para los hints de disponibilidad */
 .msh-availability-hint {
   font-size: 0.9em;
@@ -167,9 +184,95 @@
 }
 
 
-/* assets/css/admin-styles.css */
+/* ======================================================= */
+/* = Estilos para Meta Box Disponibilidad General (Tabla)= */
+/* ======================================================= */
 
-/* ... (Estilos anteriores) ... */
+#msh-availability-table {
+  table-layout: auto;
+}
+
+.msh-availability-table-wrapper {
+  max-height: 400px; /* O la altura que prefieras */
+  overflow-y: auto;
+  margin-bottom: 15px;
+  border: 1px solid #ccd0d4;
+}
+
+#msh-availability-table th,
+#msh-availability-table td {
+  /* Ajusta padding o tamaño de fuente si es necesario */
+  font-size: 11px;
+  padding: 0px 0px  0px 4px;
+}
+
+#msh-availability-table .button-link-delete {
+   color: #dc3545;
+   border-color: transparent;
+   background: none;
+   box-shadow: none;
+   padding: 0 0px;
+   vertical-align: middle;
+}
+#msh-availability-table .button-link-delete:hover {
+   color: rgb(255, 123, 0);
+}
+#msh-availability-table .button {
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+
+/* Estilos para el botón de guardar y estado */
+#msh-save-availability-changes-btn {
+  margin-left: 10px;
+}
+
+#msh-availability-save-status {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+
+/* ======================================================= */
+/* = Estilos para Modal Disponibilidad                   = */
+/* ======================================================= */
+/* Reutilizar estilos de #msh-clase-modal-container si es posible */
+/* Si necesitas estilos específicos, usa #msh-availability-modal-container */
+
+#msh-availability-modal-container {
+   background: #fff;
+   padding: 20px;
+   max-height: 90vh;
+   overflow-y: auto;
+}
+#msh-availability-modal-container h2 {
+   margin-top: 0;
+   margin-bottom: 20px;
+   font-size: 1.5em;
+   border-bottom: 1px solid #eee;
+   padding-bottom: 10px;
+}
+#msh-availability-form .form-table th { width: 180px; } /* Un poco más ancho para "Admisibles" */
+#msh-availability-form .form-table select[multiple] {
+  min-height: 80px; /* Asegurar altura mínima */
+}
+#msh-availability-form .submit {
+   margin-top: 20px;
+   padding-top: 15px;
+   border-top: 1px solid #eee;
+}
+#msh-availability-validation-messages {
+  color: #dc3545; /* Rojo */
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid #f5c6cb; /* Borde rojo claro */
+  background-color: #f8d7da; /* Fondo rojo muy claro */
+  border-radius: 4px;
+  display: none; /* Oculto por defecto */
+}
+
+
 
 /* ======================================================= */
 /* = Estilos para Checkbox Lists en Modal Disponibilidad = */
@@ -204,177 +307,4 @@
 /* Ajustar alineación vertical en la tabla del modal */
 #msh-availability-form .form-table th[style*="vertical-align: top;"] {
   padding-top: 12px; /* Ajustar padding superior del label */
-}
-
-/* assets/css/frontend-styles.css */
-
-.msh-schedule-viewer-wrapper {
-  margin: 20px 0;
-  font-family: sans-serif;
-}
-
-/* --- Filtros --- */
-#msh-schedule-filters-form {
-  background-color: #f9f9f9;
-  padding: 15px 20px;
-  border: 1px solid #e0e0e0;
-  border-radius: 5px;
-  margin-bottom: 25px;
-}
-
-.msh-filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px; /* Espacio entre grupos */
-  margin-bottom: 15px;
-}
-
-.msh-filter-group {
-  display: flex;
-  flex-direction: column; /* Label arriba, input abajo */
-  flex: 1; /* Intentar que ocupen espacio similar */
-  min-width: 180px; /* Ancho mínimo para cada filtro */
-}
-
-.msh-filter-group label {
-  font-weight: bold;
-  margin-bottom: 5px;
-  font-size: 0.9em;
-  color: #333;
-}
-
-.msh-filter-group select,
-.msh-filter-group input[type="time"] {
-  padding: 8px 10px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  box-sizing: border-box; /* Incluir padding/border en el width */
-  max-width: 100%;
-}
-
-.msh-filter-actions {
-  margin-top: 10px;
-  padding-top: 15px;
-  border-top: 1px dashed #eee;
-}
-
-.msh-filter-actions .button {
-  margin-right: 10px;
-  padding: 8px 15px;
-  cursor: pointer;
-}
-.msh-filter-actions .button-primary,
-.msh-filter-actions .msh-filter-submit-btn { /* Asegurar estilos primarios */
-  background-color: #0073aa; /* Color primario WP */
-  border-color: #0073aa;
-  color: #fff;
-}
-.msh-filter-actions .button-primary:hover,
-.msh-filter-actions .msh-filter-submit-btn:hover {
-  background-color: #005a87;
-  border-color: #005a87;
-}
-.msh-filter-actions .msh-filter-reset-btn {
-   background-color: #f1f1f1;
-   border-color: #ccc;
-   color: #555;
-}
-.msh-filter-actions .msh-filter-reset-btn:hover {
-    background-color: #e8e8e8;
-    border-color: #bbb;
-    color: #333;
-}
-
-
-/* --- Resultados --- */
-#msh-schedule-results-wrapper h3 {
-  margin-bottom: 15px;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 10px;
-}
-
-#msh-schedule-results-feedback {
-  padding: 10px 15px;
-  margin-bottom: 15px;
-  border-radius: 4px;
-  border: 1px solid transparent;
-}
-#msh-schedule-results-feedback.msh-loading {
-  background-color: #eef7ff;
-  border-color: #b3d7ff;
-  color: #004085;
-}
-#msh-schedule-results-feedback.msh-error {
-   background-color: #f8d7da;
-   border-color: #f5c6cb;
-   color: #721c24;
-}
-
-
-.msh-results-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 15px;
-  font-size: 0.9em;
-}
-
-.msh-results-table th,
-.msh-results-table td {
-  border: 1px solid #e0e0e0;
-  padding: 10px 12px;
-  text-align: left;
-  vertical-align: top; /* Alinear arriba si el contenido varía */
-}
-
-.msh-results-table thead th {
-  background-color: #f1f1f1;
-  font-weight: bold;
-}
-
-.msh-results-table tbody tr:nth-child(odd) {
-  background-color: #f9f9f9;
-}
-.msh-results-table tbody tr:hover {
-  background-color: #f0f0f0;
-}
-
-.msh-results-table td span[title] { /* Para tooltips en texto acortado */
-  cursor: help;
-  border-bottom: 1px dotted #999;
-}
-
-.msh-results-table td .button {
-  font-size: 0.9em;
-  padding: 4px 8px;
-  margin-right: 5px;
-  text-decoration: none;
-  display: inline-block; /* Para que los botones se comporten bien */
-   line-height: 1.5;
-   vertical-align: middle;
-}
-
-.msh-results-table td .button-primary {
-  background-color: #0073aa;
-  border-color: #0073aa;
-  color: #fff;
-}
-.msh-results-table td .button-primary:hover {
-   background-color: #005a87;
-   border-color: #005a87;
-}
-
-/* Spinner CSS simple (puedes usar una imagen o librería) */
-.msh-spinner {
-border: 4px solid #f3f3f3; /* Light grey */
-border-top: 4px solid #0073aa; /* Blue */
-border-radius: 50%;
-width: 20px;
-height: 20px;
-animation: msh-spin 1s linear infinite;
-margin: 20px auto; /* Centrar */
-}
-
-@keyframes msh-spin {
-0% { transform: rotate(0deg); }
-100% { transform: rotate(360deg); }
 }

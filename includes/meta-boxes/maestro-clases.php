@@ -147,6 +147,19 @@ function msh_maestro_clases_metabox_render( $post ) {
 function msh_ajax_load_clase_form_handler() {
     // 1. Seguridad: Nonce y Permisos (IMPORTANTE)
     check_ajax_referer( 'msh_manage_clases_action', 'security' );
+
+    // *** VERIFICAR LOGIN ***
+    if ( ! is_user_logged_in() ) {
+        error_log("MSH AJAX Load Form - User not logged in. Sending login_required error."); // LOG
+        wp_send_json_error( array(
+            'message' => __( 'Debes iniciar sesión para realizar esta acción.', 'music-schedule-manager' ),
+            'login_required' => true, // Flag para JS
+            'login_url' => wp_login_url( $_SERVER['REQUEST_URI'] ?? get_permalink() ) // URL de login
+        ) );
+        wp_die(); // Terminar ejecución explícitamente
+    }
+    // *** FIN VERIFICAR LOGIN ***
+
     // Definir la capacidad mínima requerida para ver/usar el formulario
     $required_capability = apply_filters('msh_capability_manage_clases', 'edit_posts'); // Permite filtrar la capacidad
     if ( ! current_user_can( $required_capability ) ) {
@@ -231,6 +244,9 @@ function msh_ajax_load_clase_form_handler() {
 }
 add_action( 'wp_ajax_msh_load_clase_form', 'msh_ajax_load_clase_form_handler' );
 // add_action( 'wp_ajax_nopriv_msh_load_clase_form', 'msh_ajax_load_clase_form_handler' ); // Considerar seguridad
+
+// *** AÑADIR HOOK NOPRIV PARA QUE EL HANDLER SE EJECUTE ***
+add_action( 'wp_ajax_nopriv_msh_load_clase_form', 'msh_ajax_load_clase_form_handler' );
 
 
 /**
